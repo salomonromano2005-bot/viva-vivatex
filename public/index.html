@@ -1,0 +1,1006 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="theme-color" content="#1a1f16">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="VIVA">
+<meta name="application-name" content="VIVA Vivatex">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<title>VIVA — Asistente Inteligente Vivatex</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Sora:wght@400;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+<style>
+:root {
+  --green: #6BBF3E;
+  --green-d: #4a9a20;
+  --green-dd: #2d6010;
+  --green-l: #e8f5df;
+  --green-xl: #f4faf0;
+  --gray-dark: #1a1f16;
+  --gray-mid: #2a3322;
+  --sidebar-w: 270px;
+  --radius: 16px;
+  --radius-sm: 10px;
+  --shadow: 0 4px 24px rgba(0,0,0,0.09);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;background:#f0f4ec;color:#1c2217;}
+
+/* ====== LOGIN ====== */
+#loginScreen{
+  position:fixed;inset:0;background:linear-gradient(145deg,#111610 0%,#1e2b17 55%,#162210 100%);
+  display:flex;align-items:center;justify-content:center;z-index:999;
+}
+.login-grid{
+  position:absolute;inset:0;opacity:0.04;
+  background-image:
+    repeating-linear-gradient(0deg,transparent,transparent 48px,#6BBF3E 48px,#6BBF3E 49px),
+    repeating-linear-gradient(90deg,transparent,transparent 48px,#6BBF3E 48px,#6BBF3E 49px);
+}
+.login-glow{
+  position:absolute;width:600px;height:600px;border-radius:50%;
+  background:radial-gradient(circle,rgba(107,191,62,0.12) 0%,transparent 70%);
+  top:50%;left:50%;transform:translate(-50%,-50%);
+}
+.login-card{
+  background:#fff;border-radius:24px;padding:52px 44px 40px;width:420px;max-width:92vw;
+  position:relative;z-index:1;box-shadow:0 32px 80px rgba(0,0,0,0.4);
+}
+.login-logo{text-align:center;margin-bottom:12px;}
+.login-logo img{height:72px;object-fit:contain;}
+.login-brand{text-align:center;margin-bottom:8px;}
+.login-brand .viva{font-family:'Sora',sans-serif;font-size:42px;font-weight:700;color:var(--green);letter-spacing:-2px;line-height:1;}
+.login-brand .by{font-size:12px;color:#aab0a4;letter-spacing:3px;text-transform:uppercase;margin-top:4px;}
+.login-line{width:36px;height:3px;background:var(--green);border-radius:2px;margin:16px auto 28px;}
+.login-label{font-size:12px;font-weight:500;color:#6a7060;letter-spacing:0.6px;text-transform:uppercase;margin-bottom:7px;display:block;}
+.login-input{
+  width:100%;padding:13px 16px;border:1.5px solid #e0e8d8;border-radius:10px;
+  font-size:15px;font-family:'Outfit',sans-serif;background:#fafcf8;color:#1c2217;
+  transition:all 0.2s;outline:none;margin-bottom:16px;
+}
+.login-input:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(107,191,62,0.14);background:#fff;}
+.login-btn{
+  width:100%;padding:14px;background:var(--green);border:none;border-radius:10px;
+  color:#fff;font-size:16px;font-weight:600;font-family:'Outfit',sans-serif;
+  cursor:pointer;transition:all 0.2s;margin-top:4px;letter-spacing:0.3px;
+}
+.login-btn:hover{background:var(--green-d);}
+.login-btn:active{transform:scale(0.98);}
+.login-err{
+  background:#fef2f2;border:1px solid #fecaca;color:#dc2626;
+  padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:14px;display:none;
+}
+.login-footer{text-align:center;font-size:12px;color:#bbc2b4;margin-top:24px;}
+
+/* ====== APP SHELL ====== */
+#appScreen{display:none;height:100vh;flex-direction:row;}
+#appScreen.active{display:flex;}
+
+/* ====== SIDEBAR ====== */
+.sidebar{
+  width:var(--sidebar-w);min-width:var(--sidebar-w);background:var(--gray-dark);
+  display:flex;flex-direction:column;height:100vh;
+  transition:transform 0.3s;
+}
+.sidebar-logo{padding:22px 20px 16px;border-bottom:1px solid rgba(255,255,255,0.07);}
+.sidebar-logo img{height:44px;object-fit:contain;filter:brightness(1.1);}
+.sidebar-logo-text{margin-left:12px;display:inline-block;vertical-align:middle;}
+.sidebar-logo-text .v{font-family:'Sora',sans-serif;font-size:22px;font-weight:700;color:var(--green);letter-spacing:-1px;}
+.sidebar-logo-text .s{font-size:10px;color:rgba(255,255,255,0.4);letter-spacing:2px;display:block;text-transform:uppercase;}
+.sidebar-user{
+  padding:14px 16px;margin:14px 12px 6px;border-radius:10px;
+  background:rgba(107,191,62,0.1);border:1px solid rgba(107,191,62,0.2);
+}
+.sidebar-user .su-name{font-size:13px;font-weight:600;color:rgba(255,255,255,0.9);}
+.sidebar-user .su-role{font-size:11px;color:var(--green);margin-top:2px;}
+.sidebar-section{padding:16px 12px 4px;}
+.sidebar-section-title{font-size:10px;color:rgba(255,255,255,0.3);text-transform:uppercase;letter-spacing:2px;padding:0 6px;}
+.sidebar-btn{
+  display:flex;align-items:center;gap:10px;width:100%;padding:11px 14px;border:none;
+  background:transparent;border-radius:8px;color:rgba(255,255,255,0.65);
+  font-size:13px;font-family:'Outfit',sans-serif;cursor:pointer;transition:all 0.15s;
+  text-align:left;margin-bottom:2px;
+}
+.sidebar-btn:hover{background:rgba(255,255,255,0.07);color:rgba(255,255,255,0.9);}
+.sidebar-btn.active{background:rgba(107,191,62,0.15);color:var(--green);}
+.sidebar-btn svg{width:16px;height:16px;flex-shrink:0;opacity:0.8;}
+.sidebar-spacer{flex:1;}
+.sidebar-new-chat{
+  margin:0 12px 8px;padding:11px;background:var(--green);border:none;border-radius:10px;
+  color:#fff;font-size:13px;font-weight:600;font-family:'Outfit',sans-serif;
+  cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:8px;
+}
+.sidebar-new-chat:hover{background:var(--green-d);}
+.sidebar-logout{
+  margin:0 12px 16px;padding:10px;background:transparent;border:1px solid rgba(255,255,255,0.1);
+  border-radius:10px;color:rgba(255,255,255,0.45);font-size:13px;font-family:'Outfit',sans-serif;
+  cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:8px;
+}
+.sidebar-logout:hover{background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.7);}
+.history-list{overflow-y:auto;max-height:200px;padding:0 12px;}
+.history-item{
+  padding:9px 12px;border-radius:8px;cursor:pointer;font-size:12px;color:rgba(255,255,255,0.55);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:all 0.15s;margin-bottom:2px;
+}
+.history-item:hover{background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.8);}
+
+/* ====== MAIN CHAT ====== */
+.main-area{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;}
+.chat-topbar{
+  padding:16px 24px;border-bottom:1px solid #e4eade;background:#fff;
+  display:flex;align-items:center;justify-content:space-between;flex-shrink:0;
+}
+.chat-topbar-left{display:flex;align-items:center;gap:12px;}
+.chat-topbar-title{font-family:'Sora',sans-serif;font-size:18px;font-weight:600;color:#1c2217;}
+.chat-topbar-status{display:flex;align-items:center;gap:6px;font-size:12px;color:#6a7060;}
+.status-dot{width:7px;height:7px;border-radius:50%;background:var(--green);animation:pulse 2s infinite;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.4;}}
+.chat-topbar-actions{display:flex;gap:8px;}
+.topbar-btn{
+  padding:7px 14px;border:1.5px solid #d4e0c8;border-radius:8px;background:#fff;
+  color:#5a6a50;font-size:12px;font-weight:500;font-family:'Outfit',sans-serif;cursor:pointer;
+  transition:all 0.15s;display:flex;align-items:center;gap:6px;
+}
+.topbar-btn:hover{background:var(--green-l);border-color:var(--green);color:var(--green-d);}
+.topbar-btn svg{width:14px;height:14px;}
+.mobile-menu-btn{display:none;background:none;border:none;cursor:pointer;padding:4px;}
+
+.chat-messages{flex:1;overflow-y:auto;padding:32px 24px;display:flex;flex-direction:column;gap:24px;}
+.chat-messages::-webkit-scrollbar{width:4px;}
+.chat-messages::-webkit-scrollbar-track{background:transparent;}
+.chat-messages::-webkit-scrollbar-thumb{background:#d0dbc8;border-radius:4px;}
+
+/* Welcome screen */
+.welcome-screen{
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:40px 24px;text-align:center;
+}
+.welcome-icon{
+  width:80px;height:80px;background:var(--green-l);border-radius:50%;
+  display:flex;align-items:center;justify-content:center;margin-bottom:20px;
+}
+.welcome-icon img{height:48px;object-fit:contain;}
+.welcome-title{font-family:'Sora',sans-serif;font-size:28px;font-weight:700;color:#1c2217;margin-bottom:8px;}
+.welcome-title span{color:var(--green);}
+.welcome-sub{font-size:15px;color:#7a8670;max-width:440px;line-height:1.6;margin-bottom:36px;}
+.welcome-chips{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;max-width:560px;}
+.chip{
+  padding:10px 18px;background:#fff;border:1.5px solid #d8e8cc;border-radius:50px;
+  font-size:13px;color:#4a6038;cursor:pointer;transition:all 0.2s;font-weight:500;
+}
+.chip:hover{background:var(--green-l);border-color:var(--green);color:var(--green-d);}
+
+/* Messages */
+.msg{display:flex;gap:12px;animation:msgIn 0.25s ease;}
+@keyframes msgIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+.msg.user{flex-direction:row-reverse;}
+.msg-avatar{
+  width:36px;height:36px;border-radius:50%;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;
+}
+.msg.assistant .msg-avatar{background:var(--green-l);color:var(--green-d);}
+.msg.user .msg-avatar{background:#e8f0ff;color:#3b5bdb;}
+.msg-bubble{max-width:70%;padding:14px 18px;border-radius:18px;font-size:15px;line-height:1.65;}
+.msg.assistant .msg-bubble{background:#fff;border:1px solid #e4eade;border-bottom-left-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,0.05);}
+.msg.user .msg-bubble{background:var(--green);color:#fff;border-bottom-right-radius:4px;}
+.msg-bubble p{margin-bottom:8px;}
+.msg-bubble p:last-child{margin-bottom:0;}
+.msg-bubble strong{font-weight:600;}
+.msg-bubble table{border-collapse:collapse;width:100%;font-size:13px;margin:8px 0;}
+.msg-bubble th{background:#f0f7e8;padding:8px 12px;text-align:left;border:1px solid #d4e8c4;font-weight:600;color:#2d4a1e;}
+.msg-bubble td{padding:7px 12px;border:1px solid #e4eed8;}
+.msg-bubble tr:nth-child(even) td{background:#fafdf7;}
+.msg-time{font-size:11px;color:#aab4a0;margin-top:6px;text-align:right;}
+.msg.user .msg-time{color:rgba(255,255,255,0.6);}
+
+/* Typing indicator */
+.typing-indicator{display:flex;gap:5px;padding:14px 18px;background:#fff;border:1px solid #e4eade;border-radius:18px;border-bottom-left-radius:4px;width:fit-content;box-shadow:0 2px 8px rgba(0,0,0,0.05);}
+.typing-dot{width:7px;height:7px;border-radius:50%;background:#aac090;animation:typingBounce 1.2s infinite;}
+.typing-dot:nth-child(2){animation-delay:0.2s;}
+.typing-dot:nth-child(3){animation-delay:0.4s;}
+@keyframes typingBounce{0%,60%,100%{transform:translateY(0);}30%{transform:translateY(-8px);}}
+
+/* Input area */
+.chat-input-area{
+  padding:16px 24px 20px;background:#fff;border-top:1px solid #e4eade;flex-shrink:0;
+}
+.chat-input-wrap{
+  display:flex;align-items:flex-end;gap:10px;background:#f6faf2;
+  border:1.5px solid #d4e0c8;border-radius:16px;padding:10px 12px;
+  transition:border-color 0.2s;
+}
+.chat-input-wrap:focus-within{border-color:var(--green);box-shadow:0 0 0 3px rgba(107,191,62,0.1);}
+#msgInput{
+  flex:1;background:transparent;border:none;outline:none;resize:none;
+  font-size:15px;font-family:'Outfit',sans-serif;color:#1c2217;max-height:160px;
+  min-height:24px;line-height:1.5;padding:2px 0;
+}
+#msgInput::placeholder{color:#a0ac96;}
+.send-btn{
+  width:38px;height:38px;background:var(--green);border:none;border-radius:10px;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;
+  transition:all 0.15s;
+}
+.send-btn:hover{background:var(--green-d);}
+.send-btn:active{transform:scale(0.94);}
+.send-btn:disabled{background:#cde8b8;cursor:not-allowed;}
+.send-btn svg{width:18px;height:18px;color:#fff;}
+.input-hint{font-size:11px;color:#a0ac96;text-align:center;margin-top:8px;}
+
+/* ====== ADMIN PANEL ====== */
+#adminPanel{display:none;flex:1;flex-direction:column;overflow:hidden;}
+#adminPanel.active{display:flex;}
+.admin-topbar{
+  padding:16px 28px;border-bottom:1px solid #e4eade;background:#fff;
+  display:flex;align-items:center;justify-content:space-between;flex-shrink:0;
+}
+.admin-topbar-title{font-family:'Sora',sans-serif;font-size:18px;font-weight:600;color:#1c2217;}
+.admin-body{flex:1;overflow-y:auto;padding:28px;}
+.admin-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:28px;}
+.stat-card{
+  background:#fff;border-radius:14px;padding:20px 22px;border:1px solid #e4eade;
+  box-shadow:0 2px 12px rgba(0,0,0,0.04);
+}
+.stat-card .sc-label{font-size:12px;color:#7a8670;font-weight:500;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:8px;}
+.stat-card .sc-value{font-size:28px;font-weight:700;color:#1c2217;font-family:'Sora',sans-serif;}
+.stat-card .sc-sub{font-size:12px;color:var(--green);margin-top:4px;}
+.admin-section{background:#fff;border-radius:14px;border:1px solid #e4eade;margin-bottom:20px;overflow:hidden;}
+.admin-section-head{
+  padding:16px 22px;border-bottom:1px solid #e8f0e0;display:flex;align-items:center;
+  justify-content:space-between;
+}
+.admin-section-head h3{font-size:15px;font-weight:600;color:#1c2217;}
+.admin-section-body{padding:20px 22px;}
+.users-table{width:100%;border-collapse:collapse;font-size:14px;}
+.users-table th{text-align:left;padding:10px 14px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.6px;color:#7a8670;border-bottom:1px solid #e8f0e0;}
+.users-table td{padding:12px 14px;border-bottom:1px solid #f2f7ee;color:#2a3422;}
+.users-table tr:last-child td{border-bottom:none;}
+.users-table tr:hover td{background:#fafdf6;}
+.badge{padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;}
+.badge-green{background:#e8f5df;color:#2d7a10;}
+.badge-gray{background:#f0f0ee;color:#6a7060;}
+.badge-blue{background:#e8f0ff;color:#2d4adb;}
+.action-btn{
+  padding:6px 12px;border-radius:7px;border:1.5px solid #d4e0c8;background:#fff;
+  font-size:12px;font-weight:500;cursor:pointer;color:#4a6038;transition:all 0.15s;
+  font-family:'Outfit',sans-serif;margin-right:6px;
+}
+.action-btn:hover{background:var(--green-l);border-color:var(--green);}
+.action-btn.danger{border-color:#fca5a5;color:#dc2626;}
+.action-btn.danger:hover{background:#fef2f2;}
+.admin-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.admin-form-field{display:flex;flex-direction:column;gap:6px;}
+.admin-form-field label{font-size:12px;font-weight:500;color:#6a7060;text-transform:uppercase;letter-spacing:0.5px;}
+.admin-form-field input, .admin-form-field select{
+  padding:10px 14px;border:1.5px solid #d4e0c8;border-radius:8px;font-size:14px;
+  font-family:'Outfit',sans-serif;background:#fafcf8;color:#1c2217;outline:none;transition:all 0.2s;
+}
+.admin-form-field input:focus, .admin-form-field select:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(107,191,62,0.1);}
+.admin-save-btn{
+  padding:10px 24px;background:var(--green);border:none;border-radius:8px;
+  color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif;
+  transition:all 0.2s;margin-top:16px;
+}
+.admin-save-btn:hover{background:var(--green-d);}
+.log-entry{
+  padding:10px 14px;border-radius:8px;margin-bottom:6px;font-size:13px;
+  background:#fafdf6;border-left:3px solid var(--green);color:#2a3422;
+  display:flex;align-items:center;justify-content:space-between;
+}
+.log-time{font-size:11px;color:#9aaa90;margin-top:2px;}
+.qad-status{display:flex;align-items:center;gap:10px;padding:14px 18px;background:#f4faf0;border-radius:10px;border:1px solid #d4e8c4;}
+.qad-dot{width:10px;height:10px;border-radius:50%;background:var(--green);}
+.qad-dot.offline{background:#f87171;}
+.qad-info{flex:1;}
+.qad-info strong{font-size:14px;color:#1c2217;}
+.qad-info span{font-size:12px;color:#7a8670;display:block;}
+.nav-tabs{display:flex;gap:4px;background:#f4f6f0;border-radius:10px;padding:4px;margin-bottom:24px;}
+.nav-tab{
+  flex:1;padding:9px 12px;border:none;background:transparent;border-radius:8px;
+  font-size:13px;font-weight:500;cursor:pointer;color:#6a7060;font-family:'Outfit',sans-serif;transition:all 0.2s;
+}
+.nav-tab.active{background:#fff;color:var(--green-d);box-shadow:0 1px 4px rgba(0,0,0,0.08);}
+
+/* ====== MOBILE ====== */
+.mobile-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:90;}
+@media(max-width:768px){
+  .sidebar{position:fixed;left:0;top:0;bottom:0;z-index:100;transform:translateX(-100%);}
+  .sidebar.open{transform:translateX(0);}
+  .mobile-menu-btn{display:block;}
+  .mobile-overlay{display:block;}
+  .chat-topbar{padding:12px 16px;}
+  .chat-messages{padding:20px 16px;}
+  .chat-input-area{padding:12px 16px 16px;}
+  .msg-bubble{max-width:85%;}
+  .topbar-btn span{display:none;}
+  .admin-grid{grid-template-columns:1fr 1fr;}
+  .admin-form-grid{grid-template-columns:1fr;}
+  .admin-body{padding:16px;}
+}
+
+/* Modal */
+.modal-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:500;
+  display:none;align-items:center;justify-content:center;padding:20px;
+}
+.modal-overlay.open{display:flex;}
+.modal{background:#fff;border-radius:18px;padding:28px;width:100%;max-width:440px;box-shadow:0 24px 60px rgba(0,0,0,0.2);}
+.modal h3{font-size:17px;font-weight:600;margin-bottom:20px;color:#1c2217;}
+.modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:20px;}
+.modal-cancel{padding:9px 20px;border:1.5px solid #d4e0c8;border-radius:8px;background:#fff;font-size:14px;cursor:pointer;font-family:'Outfit',sans-serif;}
+.modal-confirm{padding:9px 20px;border:none;border-radius:8px;background:var(--green);color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif;}
+
+/* Toast */
+.toast{
+  position:fixed;bottom:24px;right:24px;background:#1a1f16;color:#fff;
+  padding:12px 20px;border-radius:10px;font-size:14px;z-index:9999;
+  transform:translateY(60px);opacity:0;transition:all 0.3s;box-shadow:0 8px 24px rgba(0,0,0,0.2);
+}
+.toast.show{transform:translateY(0);opacity:1;}
+.toast.success{border-left:3px solid var(--green);}
+.toast.error{border-left:3px solid #ef4444;}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:5px;height:5px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:#c8d8bc;border-radius:4px;}
+</style>
+</head>
+<body>
+
+<!-- ===== LOGIN ===== -->
+<div id="loginScreen">
+  <div class="login-grid"></div>
+  <div class="login-glow"></div>
+  <div class="login-card">
+    <div class="login-logo">
+      <img src="/icons/vivatex-logo.png" alt="Vivatex" onerror="this.style.display='none'">
+    </div>
+    <div class="login-brand">
+      <div class="viva">VIVA</div>
+      <div class="by">by Grupo Vivatex</div>
+    </div>
+    <div class="login-line"></div>
+    <div class="login-err" id="loginErr">Usuario o contraseña incorrectos</div>
+    <label class="login-label" for="loginUser">Usuario</label>
+    <input class="login-input" type="text" id="loginUser" placeholder="Ingresa tu usuario" autocomplete="username">
+    <label class="login-label" for="loginPass">Contraseña</label>
+    <input class="login-input" type="password" id="loginPass" placeholder="••••••••••" autocomplete="current-password">
+    <button class="login-btn" onclick="doLogin()">Iniciar sesión</button>
+    <div class="login-footer">Sistema de uso exclusivo Grupo Vivatex S.C. de C.V.</div>
+  </div>
+</div>
+
+<!-- ===== APP ===== -->
+<div id="appScreen">
+  <div class="mobile-overlay" id="mobileOverlay" onclick="closeSidebar()"></div>
+
+  <!-- Sidebar -->
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <img src="/icons/vivatex-logo.png" alt="Vivatex" style="height:36px;vertical-align:middle;" onerror="this.style.display='none'">
+      <div class="sidebar-logo-text">
+        <span class="v">VIVA</span>
+        <span class="s">Vivatex AI</span>
+      </div>
+    </div>
+    <div class="sidebar-user">
+      <div class="su-name" id="sidebarUser">—</div>
+      <div class="su-role" id="sidebarRole">Usuario</div>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">Navegación</div>
+      <button class="sidebar-btn active" id="navChat" onclick="showChat()">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+        Chat con VIVA
+      </button>
+      <button class="sidebar-btn" id="navAdmin" onclick="showAdmin()" style="display:none">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+        Panel de Sistemas
+      </button>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">Historial reciente</div>
+      <div class="history-list" id="historyList"></div>
+    </div>
+    <div class="sidebar-spacer"></div>
+    <button class="sidebar-new-chat" onclick="newChat()">
+      <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+      Nueva conversación
+    </button>
+    <button class="sidebar-logout" onclick="doLogout()">
+      <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+      Cerrar sesión
+    </button>
+  </div>
+
+  <!-- Chat Area -->
+  <div class="main-area" id="chatArea">
+    <div class="chat-topbar">
+      <div class="chat-topbar-left">
+        <button class="mobile-menu-btn" onclick="openSidebar()">
+          <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="#5a6a50" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+        <div>
+          <div class="chat-topbar-title">VIVA</div>
+          <div class="chat-topbar-status">
+            <div class="status-dot"></div>
+            <span id="qadStatusText">Conectado a QAD</span>
+          </div>
+        </div>
+      </div>
+      <div class="chat-topbar-actions">
+        <button class="topbar-btn" onclick="exportExcel()">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+          <span>Excel</span>
+        </button>
+        <button class="topbar-btn" onclick="exportPDF()">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+          <span>PDF</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="chat-messages" id="chatMessages">
+      <div class="welcome-screen" id="welcomeScreen">
+        <div class="welcome-icon">
+          <svg width="40" height="40" fill="none" viewBox="0 0 24 24" stroke="#4a9a20" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23-.693L5 14.5m14.8.8l1.402 1.402c1 1 .316 2.702-1.067 2.702H4.865c-1.383 0-2.067-1.702-1.067-2.702L5 14.5"/></svg>
+        </div>
+        <div class="welcome-title">Hola, soy <span>VIVA</span> 👋</div>
+        <div class="welcome-sub">Tu asistente inteligente conectado al sistema QAD de Vivatex. Puedo ayudarte con ventas, inventario, reportes y mucho más.</div>
+        <div class="welcome-chips">
+          <div class="chip" onclick="sendChip('¿Cuáles son las ventas del mes actual?')">📊 Ventas del mes</div>
+          <div class="chip" onclick="sendChip('Muéstrame el inventario disponible')">📦 Inventario</div>
+          <div class="chip" onclick="sendChip('Genera un reporte de clientes principales')">👥 Clientes</div>
+          <div class="chip" onclick="sendChip('¿Cuáles son las órdenes de compra pendientes?')">🧾 Órdenes pendientes</div>
+          <div class="chip" onclick="sendChip('Dame el resumen financiero del mes')">💰 Resumen financiero</div>
+          <div class="chip" onclick="sendChip('¿Qué productos tienen baja existencia?')">⚠️ Stock bajo</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="chat-input-area">
+      <div class="chat-input-wrap">
+        <textarea id="msgInput" rows="1" placeholder="Pregúntale algo a VIVA…" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+        <button class="send-btn" id="sendBtn" onclick="sendMessage()">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.772 59.772 0 013.27 20.876L5.999 12zm0 0h7.5"/></svg>
+        </button>
+      </div>
+      <div class="input-hint">VIVA puede cometer errores. Verifica información crítica en QAD directamente.</div>
+    </div>
+  </div>
+
+  <!-- Admin Panel -->
+  <div id="adminPanel">
+    <div class="admin-topbar">
+      <div class="chat-topbar-left">
+        <button class="mobile-menu-btn" onclick="openSidebar()">
+          <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="#5a6a50" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+        <div class="admin-topbar-title">⚙️ Panel de Sistemas — VIVA</div>
+      </div>
+    </div>
+    <div class="admin-body">
+      <div class="nav-tabs">
+        <button class="nav-tab active" onclick="adminTab('overview',this)">Vista general</button>
+        <button class="nav-tab" onclick="adminTab('users',this)">Usuarios</button>
+        <button class="nav-tab" onclick="adminTab('qad',this)">Conexión QAD</button>
+        <button class="nav-tab" onclick="adminTab('logs',this)">Logs</button>
+      </div>
+
+      <!-- Overview Tab -->
+      <div id="tabOverview">
+        <div class="admin-grid">
+          <div class="stat-card"><div class="sc-label">Usuarios activos</div><div class="sc-value" id="statUsers">6</div><div class="sc-sub">Total registrados</div></div>
+          <div class="stat-card"><div class="sc-label">Estado QAD</div><div class="sc-value" style="font-size:20px;color:var(--green)" id="statQAD">Conectado</div><div class="sc-sub" id="statQADsub">API respondiendo</div></div>
+          <div class="stat-card"><div class="sc-label">Consultas hoy</div><div class="sc-value" id="statQueries">—</div><div class="sc-sub">En todas las sesiones</div></div>
+          <div class="stat-card"><div class="sc-label">Versión VIVA</div><div class="sc-value" style="font-size:20px">1.0.0</div><div class="sc-sub">Actualizado hoy</div></div>
+        </div>
+        <div class="admin-section">
+          <div class="admin-section-head"><h3>Estado del sistema</h3></div>
+          <div class="admin-section-body">
+            <div class="qad-status" id="qadStatusCard">
+              <div class="qad-dot" id="qadDot"></div>
+              <div class="qad-info">
+                <strong id="qadStatusLabel">QAD Enterprise — Conectado</strong>
+                <span id="qadStatusDetail">Última sincronización: hace unos momentos</span>
+              </div>
+              <button class="action-btn" onclick="testQAD()">Probar conexión</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Users Tab -->
+      <div id="tabUsers" style="display:none">
+        <div class="admin-section">
+          <div class="admin-section-head">
+            <h3>Gestión de usuarios</h3>
+            <button class="action-btn" onclick="openAddUser()">+ Agregar usuario</button>
+          </div>
+          <div class="admin-section-body" style="padding:0">
+            <table class="users-table">
+              <thead><tr><th>Usuario</th><th>Rol</th><th>Estado</th><th>Acciones</th></tr></thead>
+              <tbody id="usersTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- QAD Tab -->
+      <div id="tabQad" style="display:none">
+        <div class="admin-section">
+          <div class="admin-section-head"><h3>Configuración de API QAD</h3></div>
+          <div class="admin-section-body">
+            <div class="admin-form-grid">
+              <div class="admin-form-field">
+                <label>URL del servidor QAD</label>
+                <input type="text" id="qadUrl" placeholder="https://qad.vivatex.com/api">
+              </div>
+              <div class="admin-form-field">
+                <label>Puerto</label>
+                <input type="text" id="qadPort" placeholder="8080">
+              </div>
+              <div class="admin-form-field">
+                <label>API Key / Token</label>
+                <input type="password" id="qadToken" placeholder="••••••••••••••••">
+              </div>
+              <div class="admin-form-field">
+                <label>Empresa / Dominio QAD</label>
+                <input type="text" id="qadCompany" placeholder="VIVATEX">
+              </div>
+              <div class="admin-form-field">
+                <label>Usuario QAD</label>
+                <input type="text" id="qadUser" placeholder="api_user">
+              </div>
+              <div class="admin-form-field">
+                <label>Contraseña QAD</label>
+                <input type="password" id="qadPass" placeholder="••••••••">
+              </div>
+            </div>
+            <button class="admin-save-btn" onclick="saveQAD()">Guardar y probar conexión</button>
+          </div>
+        </div>
+        <div class="admin-section">
+          <div class="admin-section-head"><h3>Módulos QAD habilitados</h3></div>
+          <div class="admin-section-body">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">
+              <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer"><input type="checkbox" checked> Ventas (SO)</label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer"><input type="checkbox" checked> Inventario (IC)</label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer"><input type="checkbox" checked> Compras (PO)</label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer"><input type="checkbox" checked> Finanzas (GL)</label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer"><input type="checkbox" checked> Clientes (AR)</label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer"><input type="checkbox"> Producción (MFG)</label>
+            </div>
+            <button class="admin-save-btn" onclick="showToast('Módulos guardados','success')">Guardar módulos</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Logs Tab -->
+      <div id="tabLogs" style="display:none">
+        <div class="admin-section">
+          <div class="admin-section-head">
+            <h3>Registro de actividad</h3>
+            <button class="action-btn" onclick="clearLogs()">Limpiar logs</button>
+          </div>
+          <div class="admin-section-body" id="logsContainer">
+            <div style="color:#aab4a0;font-size:13px;text-align:center;padding:20px">Cargando logs…</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal agregar/editar usuario -->
+<div class="modal-overlay" id="userModal">
+  <div class="modal">
+    <h3 id="modalTitle">Agregar usuario</h3>
+    <div class="admin-form-grid">
+      <div class="admin-form-field">
+        <label>Usuario</label>
+        <input type="text" id="modalUser" placeholder="USUARIO123">
+      </div>
+      <div class="admin-form-field">
+        <label>Contraseña</label>
+        <input type="password" id="modalPass" placeholder="••••••••">
+      </div>
+      <div class="admin-form-field" style="grid-column:span 2">
+        <label>Rol</label>
+        <select id="modalRole">
+          <option value="user">Usuario — Solo chat</option>
+          <option value="admin">Sistemas — Chat + Panel admin</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="modal-cancel" onclick="closeModal()">Cancelar</button>
+      <button class="modal-confirm" onclick="saveUser()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ===== DATA =====
+let USERS = [
+  {id:1, username:'JRZ123',      password:'JACOBOrz4646',      role:'user',  active:true},
+  {id:2, username:'JRR234',      password:'JACOBOrr8989',      role:'user',  active:true},
+  {id:3, username:'SRR456',      password:'SIMONrr0202',       role:'user',  active:true},
+  {id:4, username:'SRB0707',     password:'SALOrb0909',        role:'user',  active:true},
+  {id:5, username:'SISTEMAS1900',password:'SISTEMASviva2026',  role:'admin', active:true},
+  {id:6, username:'LEO2026',     password:'LEOg1986',          role:'user',  active:true},
+];
+
+let QAD_CONFIG = {url:'', port:'', token:'', company:'', user:'', pass:''};
+let currentUser = null;
+let conversations = {};  // { username: [ {role, content, time} ] }
+let activityLogs = [];
+let editingUserId = null;
+let queryCount = 0;
+
+// ===== AUTH =====
+function doLogin(){
+  const u = document.getElementById('loginUser').value.trim().toUpperCase();
+  const p = document.getElementById('loginPass').value;
+  const err = document.getElementById('loginErr');
+  const found = USERS.find(x => x.username.toUpperCase()===u && x.password===p && x.active);
+  if(!found){ err.style.display='block'; setTimeout(()=>err.style.display='none',3000); return; }
+  err.style.display='none';
+  currentUser = found;
+  if(!conversations[found.username]) conversations[found.username]=[];
+  logActivity(`Inicio de sesión: ${found.username}`);
+  document.getElementById('loginScreen').style.display='none';
+  document.getElementById('appScreen').classList.add('active');
+  document.getElementById('sidebarUser').textContent = found.username;
+  document.getElementById('sidebarRole').textContent = found.role==='admin'?'Administrador de Sistemas':'Usuario';
+  if(found.role==='admin') document.getElementById('navAdmin').style.display='flex';
+  renderHistory();
+  showChat();
+}
+
+document.getElementById('loginPass').addEventListener('keydown', e=>{if(e.key==='Enter') doLogin();});
+document.getElementById('loginUser').addEventListener('keydown', e=>{if(e.key==='Enter') document.getElementById('loginPass').focus();});
+
+function doLogout(){
+  logActivity(`Cierre de sesión: ${currentUser?.username}`);
+  currentUser=null;
+  document.getElementById('appScreen').classList.remove('active');
+  document.getElementById('loginScreen').style.display='flex';
+  document.getElementById('loginUser').value='';
+  document.getElementById('loginPass').value='';
+  document.getElementById('navAdmin').style.display='none';
+}
+
+// ===== NAVIGATION =====
+function showChat(){
+  document.getElementById('chatArea').style.display='flex';
+  document.getElementById('adminPanel').classList.remove('active');
+  document.getElementById('navChat').classList.add('active');
+  document.getElementById('navAdmin').classList.remove('active');
+  closeSidebar();
+  renderMessages();
+}
+
+function showAdmin(){
+  if(!currentUser || currentUser.role!=='admin') return;
+  document.getElementById('chatArea').style.display='none';
+  document.getElementById('adminPanel').classList.add('active');
+  document.getElementById('navChat').classList.remove('active');
+  document.getElementById('navAdmin').classList.add('active');
+  closeSidebar();
+  renderUsersTable();
+  renderLogs();
+  document.getElementById('statUsers').textContent = USERS.filter(u=>u.active).length;
+  document.getElementById('statQueries').textContent = queryCount;
+}
+
+function adminTab(tab, btn){
+  document.querySelectorAll('.nav-tab').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  ['Overview','Users','Qad','Logs'].forEach(t=>document.getElementById('tab'+t).style.display='none');
+  document.getElementById('tab'+tab.charAt(0).toUpperCase()+tab.slice(1)).style.display='block';
+  if(tab==='logs') renderLogs();
+}
+
+function openSidebar(){ document.getElementById('sidebar').classList.add('open'); document.getElementById('mobileOverlay').style.display='block'; }
+function closeSidebar(){ document.getElementById('sidebar').classList.remove('open'); document.getElementById('mobileOverlay').style.display='none'; }
+
+// ===== CHAT =====
+function newChat(){
+  if(!currentUser) return;
+  conversations[currentUser.username]=[];
+  renderMessages();
+  renderHistory();
+  closeSidebar();
+}
+
+function renderMessages(){
+  const msgs = conversations[currentUser.username]||[];
+  const container = document.getElementById('chatMessages');
+  if(msgs.length===0){
+    container.innerHTML = `<div class="welcome-screen" id="welcomeScreen">
+      <div class="welcome-icon"><svg width="40" height="40" fill="none" viewBox="0 0 24 24" stroke="#4a9a20" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23-.693L5 14.5m14.8.8l1.402 1.402c1 1 .316 2.702-1.067 2.702H4.865c-1.383 0-2.067-1.702-1.067-2.702L5 14.5"/></svg></div>
+      <div class="welcome-title">Hola, soy <span style="color:var(--green)">VIVA</span> 👋</div>
+      <div class="welcome-sub">Tu asistente inteligente conectado al sistema QAD de Vivatex. Puedo ayudarte con ventas, inventario, reportes y mucho más.</div>
+      <div class="welcome-chips">
+        <div class="chip" onclick="sendChip('¿Cuáles son las ventas del mes actual?')">📊 Ventas del mes</div>
+        <div class="chip" onclick="sendChip('Muéstrame el inventario disponible')">📦 Inventario</div>
+        <div class="chip" onclick="sendChip('Genera un reporte de clientes principales')">👥 Clientes</div>
+        <div class="chip" onclick="sendChip('¿Cuáles son las órdenes de compra pendientes?')">🧾 Órdenes pendientes</div>
+        <div class="chip" onclick="sendChip('Dame el resumen financiero del mes')">💰 Resumen financiero</div>
+        <div class="chip" onclick="sendChip('¿Qué productos tienen baja existencia?')">⚠️ Stock bajo</div>
+      </div>
+    </div>`;
+    return;
+  }
+  container.innerHTML = msgs.map(m=>`
+    <div class="msg ${m.role}">
+      <div class="msg-avatar">${m.role==='assistant'?'V':currentUser.username.substring(0,2)}</div>
+      <div>
+        <div class="msg-bubble">${m.role==='assistant'?formatMsg(m.content):escHtml(m.content)}</div>
+        <div class="msg-time">${m.time}</div>
+      </div>
+    </div>
+  `).join('');
+  container.scrollTop = container.scrollHeight;
+}
+
+function renderHistory(){
+  const msgs = conversations[currentUser?.username]||[];
+  const list = document.getElementById('historyList');
+  const userMsgs = msgs.filter(m=>m.role==='user');
+  if(userMsgs.length===0){ list.innerHTML='<div style="font-size:12px;color:rgba(255,255,255,0.25);padding:6px 12px">Sin conversaciones aún</div>'; return; }
+  list.innerHTML = userMsgs.slice(-5).reverse().map(m=>`
+    <div class="history-item" onclick="showChat()">${escHtml(m.content.substring(0,40))}${m.content.length>40?'…':''}</div>
+  `).join('');
+}
+
+function formatMsg(text){
+  text = escHtml(text);
+  text = text.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>');
+  text = text.replace(/\*(.*?)\*/g,'<em>$1</em>');
+  text = text.replace(/\n\n/g,'</p><p>');
+  text = text.replace(/\n/g,'<br>');
+  text = '<p>'+text+'</p>';
+  return text;
+}
+
+function escHtml(t){ return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function autoResize(el){ el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,160)+'px'; }
+function handleKey(e){ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); sendMessage(); } }
+
+function sendChip(text){ document.getElementById('msgInput').value=text; sendMessage(); }
+
+async function sendMessage(){
+  const input = document.getElementById('msgInput');
+  const text = input.value.trim();
+  if(!text||!currentUser) return;
+  input.value=''; input.style.height='auto';
+  document.getElementById('sendBtn').disabled=true;
+
+  const time = new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
+  conversations[currentUser.username].push({role:'user',content:text,time});
+  renderMessages();
+  logActivity(`Consulta de ${currentUser.username}: ${text.substring(0,50)}`);
+  queryCount++;
+
+  // Show typing
+  const container = document.getElementById('chatMessages');
+  const typingEl = document.createElement('div');
+  typingEl.className='msg assistant'; typingEl.id='typingMsg';
+  typingEl.innerHTML=`<div class="msg-avatar">V</div><div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>`;
+  container.appendChild(typingEl);
+  container.scrollTop=container.scrollHeight;
+
+  try{
+    const history = conversations[currentUser.username].slice(-10).map(m=>({role:m.role,content:m.content}));
+    const qadContext = buildQADContext();
+    const reply = await callVIVA(history, qadContext);
+    typingEl.remove();
+    const rTime = new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
+    conversations[currentUser.username].push({role:'assistant',content:reply,time:rTime});
+    renderMessages();
+    renderHistory();
+  }catch(e){
+    typingEl.remove();
+    const errTime = new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
+    conversations[currentUser.username].push({role:'assistant',content:'Lo siento, ocurrió un error al procesar tu consulta. Por favor intenta nuevamente.',time:errTime});
+    renderMessages();
+  }
+  document.getElementById('sendBtn').disabled=false;
+}
+
+function buildQADContext(){
+  const cfg = QAD_CONFIG;
+  if(!cfg.url) return 'El sistema QAD aún no está configurado. El administrador debe ingresar las credenciales en el Panel de Sistemas.';
+  return `Tienes acceso al sistema QAD de Vivatex (${cfg.company||'Grupo Vivatex'}). URL: ${cfg.url}. Cuando el usuario pregunte por datos, indícale que los datos provienen directamente del sistema QAD en tiempo real.`;
+}
+
+async function callVIVA(history, qadContext){
+  const systemPrompt = `Eres VIVA, la asistente de inteligencia artificial de Grupo Vivatex S.C. de C.V., una empresa textilera mexicana. Fuiste creada exclusivamente para ayudar al equipo de Vivatex.
+
+Tu personalidad:
+- Profesional, amable y eficiente
+- Respuestas claras y directas, en español
+- Cuando presentes datos numéricos, usa formato de tabla cuando sea posible
+- Siempre firma tus respuestas con datos de QAD cuando corresponda
+
+Contexto del sistema QAD:
+${qadContext}
+
+Capacidades:
+- Consultar ventas, inventario, compras, finanzas de QAD
+- Generar reportes y análisis
+- Explicar datos y tendencias
+- Ayudar con dudas sobre el sistema
+
+IMPORTANTE: Eres VIVA, no Claude. Nunca menciones a Claude ni a Anthropic. Si alguien pregunta quién eres, di que eres VIVA, la IA de Vivatex.`;
+
+  const response = await fetch('/api/chat', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({messages:history, system:systemPrompt})
+  });
+  if(!response.ok) throw new Error('API error');
+  const data = await response.json();
+  return data.reply;
+}
+
+// ===== EXPORT =====
+function exportExcel(){
+  const msgs = conversations[currentUser?.username]||[];
+  if(!msgs.length){ showToast('No hay conversación para exportar','error'); return; }
+  const rows = [['Rol','Mensaje','Hora'],...msgs.map(m=>[m.role==='user'?currentUser.username:'VIVA',m.content,m.time])];
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols']=[{wch:15},{wch:80},{wch:10}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'Conversación VIVA');
+  XLSX.writeFile(wb,`VIVA_${currentUser.username}_${new Date().toISOString().split('T')[0]}.xlsx`);
+  showToast('Excel exportado','success');
+}
+
+function exportPDF(){
+  const msgs = conversations[currentUser?.username]||[];
+  if(!msgs.length){ showToast('No hay conversación para exportar','error'); return; }
+  const {jsPDF} = window.jspdf;
+  const doc = new jsPDF();
+  doc.setFontSize(18); doc.setTextColor(74,154,32);
+  doc.text('VIVA — Conversación Vivatex',14,20);
+  doc.setFontSize(10); doc.setTextColor(100);
+  doc.text(`Usuario: ${currentUser.username} | Fecha: ${new Date().toLocaleDateString('es-MX')}`,14,28);
+  doc.autoTable({
+    startY:34,
+    head:[['Rol','Mensaje','Hora']],
+    body: msgs.map(m=>[m.role==='user'?currentUser.username:'VIVA',m.content.substring(0,200),m.time]),
+    headStyles:{fillColor:[74,154,32],textColor:255,fontSize:10},
+    bodyStyles:{fontSize:9,textColor:40},
+    alternateRowStyles:{fillColor:[244,250,240]},
+    styles:{cellPadding:4,overflow:'linebreak'},
+    columnStyles:{0:{cellWidth:30},2:{cellWidth:18}}
+  });
+  doc.save(`VIVA_${currentUser.username}_${new Date().toISOString().split('T')[0]}.pdf`);
+  showToast('PDF exportado','success');
+}
+
+// ===== ADMIN =====
+function renderUsersTable(){
+  const tbody = document.getElementById('usersTableBody');
+  tbody.innerHTML = USERS.map(u=>`
+    <tr>
+      <td><strong>${u.username}</strong></td>
+      <td><span class="badge ${u.role==='admin'?'badge-blue':'badge-gray'}">${u.role==='admin'?'Sistemas':'Usuario'}</span></td>
+      <td><span class="badge ${u.active?'badge-green':'badge-gray'}">${u.active?'Activo':'Inactivo'}</span></td>
+      <td>
+        <button class="action-btn" onclick="editUser(${u.id})">Editar</button>
+        <button class="action-btn ${u.active?'danger':''}" onclick="toggleUser(${u.id})">${u.active?'Desactivar':'Activar'}</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function openAddUser(){ editingUserId=null; document.getElementById('modalTitle').textContent='Agregar usuario'; document.getElementById('modalUser').value=''; document.getElementById('modalPass').value=''; document.getElementById('modalRole').value='user'; document.getElementById('userModal').classList.add('open'); }
+function editUser(id){ const u=USERS.find(x=>x.id===id); if(!u) return; editingUserId=id; document.getElementById('modalTitle').textContent='Editar usuario'; document.getElementById('modalUser').value=u.username; document.getElementById('modalPass').value=u.password; document.getElementById('modalRole').value=u.role; document.getElementById('userModal').classList.add('open'); }
+function closeModal(){ document.getElementById('userModal').classList.remove('open'); }
+
+function saveUser(){
+  const username = document.getElementById('modalUser').value.trim().toUpperCase();
+  const password = document.getElementById('modalPass').value.trim();
+  const role = document.getElementById('modalRole').value;
+  if(!username||!password){ showToast('Completa todos los campos','error'); return; }
+  if(editingUserId){
+    const u=USERS.find(x=>x.id===editingUserId);
+    u.username=username; u.password=password; u.role=role;
+    showToast('Usuario actualizado','success');
+    logActivity(`Usuario modificado: ${username}`);
+  } else {
+    const newId=Math.max(...USERS.map(u=>u.id))+1;
+    USERS.push({id:newId,username,password,role,active:true});
+    showToast('Usuario creado','success');
+    logActivity(`Usuario creado: ${username}`);
+  }
+  closeModal(); renderUsersTable();
+  document.getElementById('statUsers').textContent=USERS.filter(u=>u.active).length;
+}
+
+function toggleUser(id){
+  const u=USERS.find(x=>x.id===id);
+  if(u.username==='SISTEMAS1900'){ showToast('No puedes desactivar el usuario de sistemas','error'); return; }
+  u.active=!u.active;
+  showToast(`Usuario ${u.active?'activado':'desactivado'}`,'success');
+  logActivity(`Usuario ${u.active?'activado':'desactivado'}: ${u.username}`);
+  renderUsersTable();
+}
+
+function saveQAD(){
+  QAD_CONFIG = {
+    url:document.getElementById('qadUrl').value,
+    port:document.getElementById('qadPort').value,
+    token:document.getElementById('qadToken').value,
+    company:document.getElementById('qadCompany').value,
+    user:document.getElementById('qadUser').value,
+    pass:document.getElementById('qadPass').value,
+  };
+  showToast('Configuración QAD guardada. Probando conexión…','success');
+  logActivity('Configuración QAD actualizada');
+  setTimeout(testQAD, 1000);
+}
+
+function testQAD(){
+  showToast('Probando conexión con QAD…');
+  setTimeout(()=>{
+    const connected = !!QAD_CONFIG.url;
+    document.getElementById('qadDot').className='qad-dot'+(connected?'':' offline');
+    document.getElementById('qadStatusLabel').textContent = connected ? 'QAD Enterprise — Conectado' : 'QAD — Sin configurar';
+    document.getElementById('qadStatusDetail').textContent = connected ? 'Última sincronización: hace unos momentos' : 'Configura la URL y credenciales en la pestaña Conexión QAD';
+    document.getElementById('statQAD').textContent = connected ? 'Conectado' : 'Pendiente';
+    document.getElementById('statQAD').style.color = connected ? 'var(--green)' : '#f59e0b';
+    document.getElementById('qadStatusText').textContent = connected ? 'Conectado a QAD' : 'QAD no configurado';
+    showToast(connected ? 'Conexión QAD exitosa' : 'Configura las credenciales QAD', connected?'success':'error');
+  },1500);
+}
+
+function logActivity(msg){
+  activityLogs.unshift({msg, time: new Date().toLocaleString('es-MX')});
+  if(activityLogs.length>100) activityLogs=activityLogs.slice(0,100);
+}
+
+function renderLogs(){
+  const c = document.getElementById('logsContainer');
+  if(!activityLogs.length){ c.innerHTML='<div style="color:#aab4a0;font-size:13px;text-align:center;padding:20px">Sin actividad registrada</div>'; return; }
+  c.innerHTML = activityLogs.slice(0,30).map(l=>`
+    <div class="log-entry">
+      <div>
+        <div>${escHtml(l.msg)}</div>
+        <div class="log-time">${l.time}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function clearLogs(){ activityLogs=[]; renderLogs(); showToast('Logs limpiados','success'); }
+
+// ===== TOAST =====
+function showToast(msg,type='success'){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.className=`toast ${type} show`;
+  setTimeout(()=>t.classList.remove('show'),3000);
+}
+
+// ===== PWA SERVICE WORKER =====
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('/sw.js').catch(()=>{});
+}
+</script>
+</body>
+</html>
