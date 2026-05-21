@@ -222,6 +222,9 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;background
   min-height:24px;line-height:1.5;padding:2px 0;
 }
 #msgInput::placeholder{color:#a0ac96;}
+.attach-btn{background:none;border:none;cursor:pointer;padding:6px 8px;color:#6BBF3E;display:flex;align-items:center;border-radius:8px;transition:background 0.15s;}
+.attach-btn:hover{background:#e8f5df;}
+.attach-btn svg{width:20px;height:20px;}
 .send-btn{
   width:38px;height:38px;background:var(--green);border:none;border-radius:10px;
   display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;
@@ -467,6 +470,10 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;background
 
     <div class="chat-input-area">
       <div class="chat-input-wrap">
+        <button class="attach-btn" onclick="document.getElementById('fileInput').click()" title="Subir Excel o CSV de QAD">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/></svg>
+        </button>
+        <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" multiple style="display:none" onchange="uploadQADFiles(this)">
         <textarea id="msgInput" rows="1" placeholder="Pregúntale algo a VIVA…" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
         <button class="send-btn" id="sendBtn" onclick="sendMessage()">
           <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.772 59.772 0 013.27 20.876L5.999 12zm0 0h7.5"/></svg>
@@ -776,6 +783,26 @@ function formatMsg(text){
 }
 
 function escHtml(t){ return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+async function uploadQADFiles(input) {
+  const files = input.files;
+  if (!files.length) return;
+  const formData = new FormData();
+  for (const f of files) formData.append('files', f);
+  appendMsg('viva', `⏳ Cargando ${files.length} archivo(s): ${Array.from(files).map(f=>f.name).join(', ')}...`);
+  try {
+    const res = await fetch('/api/qad/upload', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (data.ok) {
+      appendMsg('viva', `✅ ¡Archivos cargados exitosamente!\n📊 ${data.files} archivo(s), ${data.sheets} hoja(s) procesadas.\n\nYa puedo responder preguntas con estos datos. ¿Qué necesitas saber?`);
+    } else {
+      appendMsg('viva', '❌ Error al cargar los archivos. Verifica que sean .xlsx, .xls o .csv');
+    }
+  } catch(e) {
+    appendMsg('viva', '❌ Error de conexión al subir archivos.');
+  }
+  input.value = '';
+}
 
 function autoResize(el){ el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,160)+'px'; }
 function handleKey(e){ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); sendMessage(); } }
