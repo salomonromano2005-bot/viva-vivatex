@@ -548,6 +548,24 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;background
       <!-- QAD Tab -->
       <div id="tabQad" style="display:none">
         <div class="admin-section">
+          <div class="admin-section-head"><h3>📂 Subir archivos de QAD (Opción A — Cada hora)</h3></div>
+          <div class="admin-section-body">
+            <p style="font-size:13px;color:#6a7060;margin-bottom:16px">Sube los reportes exportados de QAD en formato Excel o CSV. VIVA los leerá y podrá responder preguntas con esa información.</p>
+            <div style="border:2px dashed #6BBF3E;border-radius:12px;padding:28px;text-align:center;background:#f4faf0;cursor:pointer" onclick="document.getElementById('adminFileInput').click()">
+              <div style="font-size:32px;margin-bottom:8px">📊</div>
+              <div style="font-size:15px;font-weight:600;color:#1c2217;margin-bottom:4px">Arrastra archivos aquí o haz clic para seleccionar</div>
+              <div style="font-size:12px;color:#6a7060">Formatos: .xlsx, .xls, .csv · Múltiples archivos permitidos</div>
+            </div>
+            <input type="file" id="adminFileInput" accept=".xlsx,.xls,.csv" multiple style="display:none" onchange="uploadQADFiles(this)">
+            <div id="qadUploadStatus" style="margin-top:12px;font-size:13px;min-height:20px"></div>
+            <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
+              <button class="admin-save-btn" style="margin:0" onclick="document.getElementById('adminFileInput').click()">📂 Seleccionar archivos QAD</button>
+              <button class="admin-save-btn" style="margin:0;background:#1c2217" onclick="clearQADData()">🗑️ Limpiar datos QAD</button>
+              <button class="admin-save-btn" style="margin:0;background:#2563eb" onclick="checkQADStatus()">🔄 Ver estado actual</button>
+            </div>
+          </div>
+        </div>
+        <div class="admin-section">
           <div class="admin-section-head"><h3>Configuración de API QAD</h3></div>
           <div class="admin-section-body">
             <div class="admin-form-grid">
@@ -792,21 +810,67 @@ function escHtml(t){ return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace
 async function uploadQADFiles(input) {
   const files = input.files;
   if (!files.length) return;
+  const names = Array.from(files).map(f=>f.name).join(', ');
+  showToast('⏳ Subiendo archivos...', 'success');
+
+  // Actualizar estado en panel admin si está visible
+  const adminStatus = document.getElementById('qadUploadStatus');
+  if(adminStatus) adminStatus.innerHTML = `<span style="color:#6BBF3E">⏳ Subiendo: ${names}</span>`;
+
   const formData = new FormData();
   for (const f of files) formData.append('files', f);
-  appendMsg('viva', `⏳ Cargando ${files.length} archivo(s): ${Array.from(files).map(f=>f.name).join(', ')}...`);
+
   try {
     const res = await fetch('/api/qad/upload', { method: 'POST', body: formData });
     const data = await res.json();
     if (data.ok) {
-      appendMsg('viva', `✅ ¡Archivos cargados exitosamente!\n📊 ${data.files} archivo(s), ${data.sheets} hoja(s) procesadas.\n\nYa puedo responder preguntas con estos datos. ¿Qué necesitas saber?`);
+      showToast(`✅ ${data.files} archivo(s) cargados — ${data.sheets} hojas`, 'success');
+      // Actualizar panel admin
+      if(adminStatus) adminStatus.innerHTML = `<span style="color:#6BBF3E">✅ ${data.files} archivo(s) cargados · ${data.sheets} hojas · ${new Date().toLocaleTimeString('es-MX')}</span>`;
+      // Si el chat está visible, agregar mensaje
+      const chatArea = document.getElementById('chatArea');
+      if(chatArea && chatArea.style.display !== 'none') {
+        appendMsg('viva', `✅ Archivos cargados: ${names}\n📊 ${data.sheets} hojas procesadas. Ya puedo responder con estos datos.`);
+      }
+      // Actualizar estadística en overview
+      const statQAD = document.getElementById('statQAD');
+      if(statQAD) statQAD.textContent = 'Conectado';
+      const statQADsub = document.getElementById('statQADsub');
+      if(statQADsub) statQADsub.textContent = `${data.sheets} hojas cargadas`;
     } else {
-      appendMsg('viva', '❌ Error al cargar los archivos. Verifica que sean .xlsx, .xls o .csv');
+      showToast('❌ Error al cargar archivos', 'error');
+      if(adminStatus) adminStatus.innerHTML = `<span style="color:#e53e3e">❌ Error al cargar archivos</span>`;
     }
   } catch(e) {
-    appendMsg('viva', '❌ Error de conexión al subir archivos.');
+    showToast('❌ Error de conexión', 'error');
+    if(adminStatus) adminStatus.innerHTML = `<span style="color:#e53e3e">❌ Error de conexión</span>`;
   }
   input.value = '';
+}
+
+async function clearQADData(){
+  try {
+    await fetch('/api/qad/clear', {method:'DELETE'});
+    showToast('🗑️ Datos QAD eliminados','success');
+    const s = document.getElementById('qadUploadStatus');
+    if(s) s.innerHTML = '<span style="color:#6a7060">Sin datos cargados</span>';
+  } catch(e){ showToast('Error al limpiar','error'); }
+}
+
+async function checkQADStatus(){
+  try {
+    const res = await fetch('/api/qad/status');
+    const d = await res.json();
+    const s = document.getElementById('qadUploadStatus');
+    if(d.hasData){
+      const msg = `✅ Datos disponibles · ${d.totalRecords} registros · ${d.sheets.length} hojas · Actualizado: ${d.lastUpdate ? new Date(d.lastUpdate).toLocaleString('es-MX') : 'N/A'}`;
+      if(s) s.innerHTML = `<span style="color:#6BBF3E">${msg}</span>`;
+      showToast(msg, 'success');
+    } else {
+      if(s) s.innerHTML = '<span style="color:#f59e0b">⚠️ Sin datos QAD cargados</span>';
+      showToast('Sin datos QAD cargados aún','error');
+    }
+  } catch(e){ showToast('Error al verificar estado','error'); }
 }
 
 function autoResize(el){ el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,160)+'px'; }
