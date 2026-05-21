@@ -860,33 +860,50 @@ function buildQADContext(){
   return `Tienes acceso al sistema QAD de Vivatex (${cfg.company||'Grupo Vivatex'}). URL: ${cfg.url}. Cuando el usuario pregunte por datos, indícale que los datos provienen directamente del sistema QAD en tiempo real.`;
 }
 
+// Datos del último Excel generado por VIVA
+let lastExcelData = null;
+
 async function callVIVA(history, qadContext){
-  const systemPrompt = `Eres VIVA, la asistente de inteligencia artificial de Grupo Vivatex S.A. de C.V., una empresa textilera mexicana. Fuiste creada exclusivamente para ayudar al equipo de Vivatex.
+  const systemPrompt = `Eres VIVA, la asistente de inteligencia artificial de Grupo Vivatex S.A. de C.V., una empresa textilera mexicana de clase mundial.
 
-Tu personalidad:
-- Profesional, amable y eficiente
-- Respuestas claras y directas, en español
-- Cuando presentes datos numéricos, SIEMPRE usa formato de tabla markdown con columnas bien definidas
-- Firma tus respuestas como "VIVA - Asistente Vivatex"
+PERSONALIDAD:
+- Extremadamente profesional, ejecutiva y precisa
+- Respuestas en español, claras y directas
+- Nivel CEO internacional — presentas datos de forma impecable
+- Firma: "VIVA · Inteligencia Vivatex"
 
-CAPACIDADES IMPORTANTES — DEBES SABER ESTO:
-- SÍ PUEDES generar reportes en Excel. La interfaz tiene un botón "Excel" arriba a la derecha que descarga automáticamente toda la conversación y datos en un archivo Excel profesional con 3 hojas.
-- SÍ PUEDES generar PDF con el botón "PDF" arriba a la derecha.
-- Cuando alguien te pida un Excel o reporte, diles: "Con gusto. Organiza los datos aquí y luego presiona el botón EXCEL arriba a la derecha para descargar el archivo profesional."
-- NUNCA digas que no puedes generar Excel o archivos descargables. SIEMPRE puedes hacerlo con el botón de arriba.
-- Cuando presentes datos en tabla, hazlo en formato markdown con | columna | columna | para que se vea profesional.
+FORMATO DE RESPUESTA — MUY IMPORTANTE:
+Cuando el usuario pida datos, reportes, tablas, Excel, análisis o cualquier información numérica, DEBES responder en este formato JSON exacto (nada más, sin texto extra antes ni después):
 
-Contexto del sistema QAD:
-${qadContext}
+{
+  "texto": "Tu respuesta en texto aquí, explicando los datos",
+  "excel": {
+    "titulo": "Nombre del reporte",
+    "hojas": [
+      {
+        "nombre": "Nombre de la hoja",
+        "columnas": ["Col1", "Col2", "Col3"],
+        "filas": [
+          ["valor1", "valor2", "valor3"],
+          ["valor1", "valor2", "valor3"]
+        ],
+        "totales": ["Total", "suma1", "suma2"]
+      }
+    ]
+  }
+}
 
-Capacidades:
-- Consultar ventas, inventario, compras, finanzas de QAD
-- Generar reportes y análisis en tabla
-- Explicar datos y tendencias del negocio
-- Sumar, promediar y calcular datos automáticamente
-- Exportar a Excel y PDF profesional
+Si la pregunta es conversacional (saludos, dudas, explicaciones sin datos), responde SOLO con texto normal sin JSON.
 
-IMPORTANTE: Eres VIVA, no Claude. Nunca menciones a Claude ni a Anthropic. Si alguien pregunta quién eres, di que eres VIVA, la IA de Vivatex creada para Grupo Vivatex S.A. de C.V.`;
+CAPACIDADES:
+- Analizar datos de ventas, inventario, finanzas, producción, clientes
+- Generar reportes ejecutivos con múltiples hojas
+- Calcular totales, promedios, variaciones porcentuales
+- Comparar periodos, tendencias, rankings
+
+Contexto QAD: ${qadContext}
+
+NUNCA menciones Claude ni Anthropic. Eres VIVA, creada para Grupo Vivatex S.A. de C.V.`;
 
   const response = await fetch('/api/chat', {
     method:'POST',
@@ -895,57 +912,112 @@ IMPORTANTE: Eres VIVA, no Claude. Nunca menciones a Claude ni a Anthropic. Si al
   });
   if(!response.ok) throw new Error('API error');
   const data = await response.json();
-  return data.reply;
+  const reply = data.reply;
+
+  // Intentar parsear si viene con datos Excel
+  try {
+    const jsonMatch = reply.match(/\{[\s\S]*\}/);
+    if(jsonMatch){
+      const parsed = JSON.parse(jsonMatch[0]);
+      if(parsed.excel && parsed.texto){
+        lastExcelData = parsed.excel;
+        // Mostrar botón de descarga Excel específico
+        showExcelReady(parsed.excel.titulo);
+        return parsed.texto;
+      }
+    }
+  } catch(e){}
+
+  lastExcelData = null;
+  return reply;
+}
+
+function showExcelReady(titulo){
+  // Mostrar notificación con botón de descarga
+  const notif = document.createElement('div');
+  notif.style.cssText = 'position:fixed;bottom:90px;right:20px;background:#1a1f16;color:#6BBF3E;border:1.5px solid #6BBF3E;border-radius:12px;padding:12px 18px;font-size:13px;font-weight:600;cursor:pointer;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,0.3);display:flex;align-items:center;gap:10px;';
+  notif.innerHTML = `<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg> Descargar Excel: ${titulo}`;
+  notif.onclick = () => { downloadVivaExcel(); notif.remove(); };
+  document.body.appendChild(notif);
+  setTimeout(() => { if(notif.parentNode) notif.remove(); }, 15000);
 }
 
 // ===== EXPORT =====
-function exportExcel(){
-  const msgs = conversations[currentUser?.username]||[];
-  if(!msgs.length){ showToast('No hay conversación para exportar','error'); return; }
+function downloadVivaExcel(){
+  if(!lastExcelData){ showToast('No hay datos Excel generados aún','error'); return; }
   const wb = XLSX.utils.book_new();
+  const fecha = new Date().toLocaleDateString('es-MX');
+  const titulo = lastExcelData.titulo || 'Reporte VIVA';
 
-  // Hoja 1: Conversación
-  const convRows = [
-    ['REPORTE VIVA — GRUPO VIVATEX S.A. DE C.V.','',''],
+  lastExcelData.hojas.forEach(hoja => {
+    const rows = [];
+    // Encabezado corporativo
+    rows.push(['GRUPO VIVATEX S.A. DE C.V.', '', '', '', '']);
+    rows.push([titulo.toUpperCase(), '', '', '', '']);
+    rows.push(['Generado por: VIVA · Inteligencia Vivatex', '', '', '', '']);
+    rows.push(['Fecha: ' + fecha, '', '', '', '']);
+    rows.push(['Usuario: ' + (currentUser?.username || ''), '', '', '', '']);
+    rows.push(['', '', '', '', '']);
+    // Columnas
+    rows.push(hoja.columnas || []);
+    // Filas de datos
+    (hoja.filas || []).forEach(fila => rows.push(fila));
+    // Totales
+    if(hoja.totales) {
+      rows.push(['', '', '', '', '']);
+      rows.push(hoja.totales);
+    }
+
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    // Anchos de columna automáticos
+    const maxCols = Math.max(...rows.map(r => r.length));
+    ws['!cols'] = Array(maxCols).fill({wch: 22});
+    if(ws['!cols'][0]) ws['!cols'][0] = {wch: 30};
+
+    XLSX.utils.book_append_sheet(wb, ws, hoja.nombre || 'Datos');
+  });
+
+  // Hoja resumen
+  const resumenRows = [
+    ['GRUPO VIVATEX S.A. DE C.V.', ''],
+    ['RESUMEN DEL REPORTE', ''],
+    ['', ''],
+    ['Reporte:', titulo],
+    ['Fecha:', fecha],
+    ['Usuario:', currentUser?.username || ''],
+    ['Hojas generadas:', lastExcelData.hojas.length],
+    ['Sistema:', 'VIVA · Inteligencia Vivatex'],
+  ];
+  const wsRes = XLSX.utils.aoa_to_sheet(resumenRows);
+  wsRes['!cols'] = [{wch:25},{wch:40}];
+  XLSX.utils.book_append_sheet(wb, wsRes, 'Portada');
+
+  const filename = `Vivatex_${titulo.replace(/\s+/g,'_')}_${new Date().toISOString().split('T')[0]}.xlsx`;
+  XLSX.writeFile(wb, filename);
+  showToast('✅ Excel descargado: ' + filename, 'success');
+}
+
+function exportExcel(){
+  // Si hay datos dinámicos de VIVA, descargar esos
+  if(lastExcelData){ downloadVivaExcel(); return; }
+  // Si no, exportar conversación
+  const msgs = conversations[currentUser?.username]||[];
+  if(!msgs.length){ showToast('No hay datos para exportar','error'); return; }
+  const wb = XLSX.utils.book_new();
+  const rows = [
+    ['GRUPO VIVATEX S.A. DE C.V.','',''],
+    ['Conversación con VIVA','',''],
     ['Fecha:', new Date().toLocaleDateString('es-MX'),''],
     ['Usuario:', currentUser.username,''],
     ['','',''],
     ['REMITENTE','MENSAJE','HORA'],
-    ...msgs.map(m=>[m.role==='user'?currentUser.username:'VIVA 🤖',m.content,m.time])
+    ...msgs.map(m=>[m.role==='user'?currentUser.username:'VIVA',m.content,m.time])
   ];
-  const ws1 = XLSX.utils.aoa_to_sheet(convRows);
-  ws1['!cols']=[{wch:20},{wch:90},{wch:12}];
-  // Estilo encabezado
-  ws1['A1'] = {v:'REPORTE VIVA — GRUPO VIVATEX S.A. DE C.V.', t:'s'};
-  XLSX.utils.book_append_sheet(wb, ws1, 'Conversación');
-
-  // Hoja 2: Solo respuestas de VIVA (datos limpios)
-  const vivaRows = [
-    ['RESPUESTAS DE VIVA',''],
-    ['Fecha:', new Date().toLocaleDateString('es-MX')],
-    ['',''],
-    ['#','RESPUESTA','HORA'],
-    ...msgs.filter(m=>m.role==='assistant').map((m,i)=>[i+1, m.content, m.time])
-  ];
-  const ws2 = XLSX.utils.aoa_to_sheet(vivaRows);
-  ws2['!cols']=[{wch:5},{wch:100},{wch:12}];
-  XLSX.utils.book_append_sheet(wb, ws2, 'Respuestas VIVA');
-
-  // Hoja 3: Preguntas del usuario
-  const userRows = [
-    ['CONSULTAS REALIZADAS',''],
-    ['Usuario:', currentUser.username],
-    ['Fecha:', new Date().toLocaleDateString('es-MX')],
-    ['',''],
-    ['#','CONSULTA','HORA'],
-    ...msgs.filter(m=>m.role==='user').map((m,i)=>[i+1, m.content, m.time])
-  ];
-  const ws3 = XLSX.utils.aoa_to_sheet(userRows);
-  ws3['!cols']=[{wch:5},{wch:100},{wch:12}];
-  XLSX.utils.book_append_sheet(wb, ws3, 'Consultas');
-
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols']=[{wch:20},{wch:90},{wch:12}];
+  XLSX.utils.book_append_sheet(wb, ws, 'Conversación');
   XLSX.writeFile(wb, `VIVA_${currentUser.username}_${new Date().toISOString().split('T')[0]}.xlsx`);
-  showToast('✅ Excel profesional descargado','success');
+  showToast('✅ Excel exportado','success');
 }
 
 function exportPDF(){
