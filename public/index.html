@@ -129,6 +129,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;background
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:all 0.15s;margin-bottom:2px;
 }
 .history-item:hover{background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.8);}
+.history-item{display:flex;align-items:center;gap:4px;}
 
 /* ====== MAIN CHAT ====== */
 .main-area{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;}
@@ -673,7 +674,73 @@ let USERS = [
 
 let QAD_CONFIG = {url:'', port:'', token:'', company:'', user:'', pass:''};
 let currentUser = null;
-let conversations = {};  // { username: [ {role, content, time} ] }
+let conversations = {};  // { convId: { title, messages: [{role,content,time}] } }
+let currentConvId = null;
+let allConversations = [];  // lista de todas las conversaciones del usuario
+
+// Generar ID único para conversación
+function genConvId() { return 'conv_' + Date.now() + '_' + Math.random().toString(36).substr(2,6); }
+
+// Guardar conversación actual en DB
+async function saveCurrentConv() {
+  if (!currentUser || !currentConvId) return;
+  const conv = conversations[currentConvId];
+  if (!conv || !conv.messages.length) return;
+  try {
+    await fetch('/api/conversations/save', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        username: currentUser.username,
+        convId: currentConvId,
+        title: conv.title || conv.messages[0]?.content?.substring(0,60) || 'Conversación',
+        messages: conv.messages
+      })
+    });
+  } catch(e) { console.warn('No se pudo guardar conversación:', e); }
+}
+
+// Cargar todas las conversaciones del usuario desde DB
+async function loadUserConversations() {
+  if (!currentUser) return;
+  try {
+    const res = await fetch('/api/conversations/' + currentUser.username);
+    const data = await res.json();
+    allConversations = data.conversations || [];
+    // Cargar en memoria
+    allConversations.forEach(c => {
+      conversations[c.conv_id] = {
+        title: c.title,
+        messages: c.messages || [],
+        updatedAt: c.updated_at
+      };
+    });
+    renderHistory();
+  } catch(e) { console.warn('No se pudieron cargar conversaciones:', e); }
+}
+
+// Cargar una conversación específica
+function loadConversation(convId) {
+  currentConvId = convId;
+  renderMessages();
+  showChat();
+}
+
+// Eliminar conversación
+async function deleteConversation(convId) {
+  if (!currentUser) return;
+  try {
+    await fetch('/api/conversations/' + currentUser.username + '/' + convId, {method:'DELETE'});
+    delete conversations[convId];
+    allConversations = allConversations.filter(c => c.conv_id !== convId);
+    if (currentConvId === convId) {
+      currentConvId = null;
+      startNewConversation();
+    }
+    renderHistory();
+    showToast('Conversación eliminada','success');
+  } catch(e) { showToast('Error al eliminar','error'); }
+}
 let activityLogs = [];
 let editingUserId = null;
 let queryCount = 0;
@@ -755,7 +822,7 @@ function newChat(){
 }
 
 function renderMessages(){
-  const msgs = conversations[currentUser.username]||[];
+  const msgs = currentConvId && conversations[currentConvId] ? conversations[currentConvId].messages : [];
   const container = document.getElementById('chatMessages');
   if(msgs.length===0){
     container.innerHTML = `<div class="welcome-screen" id="welcomeScreen">
@@ -886,7 +953,12 @@ async function sendMessage(){
   document.getElementById('sendBtn').disabled=true;
 
   const time = new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
-  conversations[currentUser.username].push({role:'user',content:text,time});
+  if(!currentConvId) { currentConvId = genConvId(); conversations[currentConvId]={title:text.substring(0,60),messages:[]}; }
+  if(!conversations[currentConvId]) conversations[currentConvId]={title:text.substring(0,60),messages:[]};
+  conversations[currentConvId].messages.push({role:'user',content:text,time});
+  if(!conversations[currentConvId].title || conversations[currentConvId].title==='Nueva conversación'){
+    conversations[currentConvId].title = text.substring(0,60);
+  }
   renderMessages();
   logActivity(`Consulta de ${currentUser.username}: ${text.substring(0,50)}`);
   queryCount++;
@@ -900,15 +972,17 @@ async function sendMessage(){
   container.scrollTop=container.scrollHeight;
 
   try{
-    const history = conversations[currentUser.username].slice(-10).map(m=>({role:m.role,content:m.content}));
+    const history = (conversations[currentConvId]?.messages || []).slice(-10).map(m=>({role:m.role,content:m.content}));
     const qadContext = buildQADContext();
     const reply = await callVIVA(history, qadContext);
     typingEl.remove();
     const rTime = new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
-    conversations[currentUser.username].push({role:'assistant',content:reply,time:rTime});
+    conversations[currentConvId].messages.push({role:'assistant',content:reply,time:rTime});
+    conversations[currentConvId].updatedAt = new Date().toISOString();
     renderMessages();
     renderHistory();
     speakText(reply);
+    saveCurrentConv();
   }catch(e){
     typingEl.remove();
     const errTime = new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
