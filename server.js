@@ -35,6 +35,18 @@ async function initDB() {
         updated_at TIMESTAMP DEFAULT NOW()
       );
     `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS conversations (
+        id SERIAL PRIMARY KEY,
+        username VARCHAR(100) NOT NULL,
+        conv_id VARCHAR(100) NOT NULL,
+        title VARCHAR(500),
+        messages JSONB DEFAULT '[]',
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(username, conv_id)
+      );
+    `);
     console.log('✅ Base de datos PostgreSQL conectada');
   } catch (e) {
     console.error('❌ Error conectando DB:', e.message);
@@ -168,6 +180,55 @@ app.delete('/api/qad/clear', async (req, res) => {
   qadLastUpdate = null;
   await clearQADFromDB();
   res.json({ ok: true });
+});
+
+// ---- Rutas de conversaciones ----
+
+// Guardar conversación
+app.post('/api/conversations/save', async (req, res) => {
+  const { username, convId, title, messages } = req.body;
+  if (!username || !convId) return res.status(400).json({ error: 'Faltan datos' });
+  try {
+    if (pool) {
+      await pool.query(`
+        INSERT INTO conversations (username, conv_id, title, messages, updated_at)
+        VALUES ($1, $2, $3, $4, NOW())
+        ON CONFLICT (username, conv_id) DO UPDATE
+        SET title=$3, messages=$4, updated_at=NOW()
+      `, [username, convId, title || 'Conversación', JSON.stringify(messages)]);
+    }
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('Error guardando conversación:', e.message);
+    res.status(500).json({ error: 'Error guardando' });
+  }
+});
+
+// Obtener todas las conversaciones de un usuario
+app.get('/api/conversations/:username', async (req, res) => {
+  const { username } = req.params;
+  try {
+    if (!pool) return res.json({ conversations: [] });
+    const result = await pool.query(
+      'SELECT conv_id, title, messages, created_at, updated_at FROM conversations WHERE username=$1 ORDER BY updated_at DESC LIMIT 50',
+      [username]
+    );
+    res.json({ conversations: result.rows });
+  } catch (e) {
+    console.error('Error cargando conversaciones:', e.message);
+    res.json({ conversations: [] });
+  }
+});
+
+// Eliminar conversación
+app.delete('/api/conversations/:username/:convId', async (req, res) => {
+  const { username, convId } = req.params;
+  try {
+    if (pool) await pool.query('DELETE FROM conversations WHERE username=$1 AND conv_id=$2', [username, convId]);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Error eliminando' });
+  }
 });
 
 // ---- Chat principal ----
