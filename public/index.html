@@ -754,7 +754,6 @@ function doLogin(){
   if(!found){ err.style.display='block'; setTimeout(()=>err.style.display='none',3000); return; }
   err.style.display='none';
   currentUser = found;
-  if(!conversations[found.username]) conversations[found.username]=[];
   logActivity(`Inicio de sesión: ${found.username}`);
   document.getElementById('loginScreen').style.display='none';
   document.getElementById('appScreen').classList.add('active');
@@ -986,7 +985,7 @@ async function sendMessage(){
   }catch(e){
     typingEl.remove();
     const errTime = new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
-    conversations[currentUser.username].push({role:'assistant',content:'Lo siento, ocurrió un error al procesar tu consulta. Por favor intenta nuevamente.',time:errTime});
+    if(currentConvId && conversations[currentConvId]) conversations[currentConvId].messages.push({role:'assistant',content:'Lo siento, ocurrió un error al procesar tu consulta. Por favor intenta nuevamente.',time:errTime});
     renderMessages();
   }
   document.getElementById('sendBtn').disabled=false;
