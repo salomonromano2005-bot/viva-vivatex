@@ -343,7 +343,7 @@ app.get('*', (req, res) => {
 // ---- Arrancar ----
 initDB().then(() => {
   app.listen(PORT, () => {
-    console.log(`\n🌿 VIVA — Servidor corriendo en http://localhost:${PORT}`);
+    console.log(`\n🌿 AAVIVA — Servidor corriendo en http://localhost:${PORT}`);
     console.log(`   Panel admin: http://localhost:${PORT}  (usuario SISTEMAS1900)`);
     console.log(`   Base de datos: ${pool ? '✅ PostgreSQL persistente' : '⚠️  Memoria (no persiste)'}\n`);
   });
