@@ -745,6 +745,27 @@ let activityLogs = [];
 let editingUserId = null;
 let queryCount = 0;
 
+// ===== CONVERSACIONES =====
+function startNewConversation(){
+  currentConvId = genConvId();
+  conversations[currentConvId] = { title: 'Nueva conversación', messages: [], updatedAt: new Date().toISOString() };
+  pendingFiles = [];
+  const wrap = document.getElementById('messagesWrap');
+  if(wrap) wrap.innerHTML = '';
+  const welcome = document.getElementById('welcomeScreen');
+  if(welcome) welcome.style.display = 'flex';
+  const input = document.getElementById('msgInput');
+  if(input) { input.value = ''; input.style.height = 'auto'; }
+  renderHistory();
+  showChat();
+  setTimeout(() => { if(input) input.focus(); }, 100);
+}
+
+async function newChat(){
+  await saveCurrentConv();
+  startNewConversation();
+}
+
 // ===== AUTH =====
 function doLogin(){
   const u = document.getElementById('loginUser').value.trim().toUpperCase();
