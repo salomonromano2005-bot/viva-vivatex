@@ -754,14 +754,26 @@ function doLogin(){
   if(!found){ err.style.display='block'; setTimeout(()=>err.style.display='none',3000); return; }
   err.style.display='none';
   currentUser = found;
+  currentConvId = null;
+  conversations = {};
+  pendingFiles = [];
   logActivity(`Inicio de sesión: ${found.username}`);
   document.getElementById('loginScreen').style.display='none';
   document.getElementById('appScreen').classList.add('active');
   document.getElementById('sidebarUser').textContent = found.username;
   document.getElementById('sidebarRole').textContent = found.role==='admin'?'Administrador de Sistemas':'Usuario';
   if(found.role==='admin') document.getElementById('navAdmin').style.display='flex';
-  renderHistory();
-  showChat();
+  // Cargar conversaciones desde DB
+  loadUserConversations().then(() => {
+    renderHistory();
+    showChat();
+    // Si hay conversaciones previas, abrir la más reciente
+    const convIds = Object.keys(conversations);
+    if(convIds.length > 0) {
+      currentConvId = convIds[0];
+      renderMessages();
+    }
+  });
 }
 
 document.getElementById('loginPass').addEventListener('keydown', e=>{if(e.key==='Enter') doLogin();});
@@ -812,13 +824,7 @@ function openSidebar(){ document.getElementById('sidebar').classList.add('open')
 function closeSidebar(){ document.getElementById('sidebar').classList.remove('open'); document.getElementById('mobileOverlay').style.display='none'; }
 
 // ===== CHAT =====
-function newChat(){
-  if(!currentUser) return;
-  conversations[currentUser.username]=[];
-  renderMessages();
-  renderHistory();
-  closeSidebar();
-}
+// newChat() está definida más abajo con lógica async completa
 
 function renderMessages(){
   const msgs = currentConvId && conversations[currentConvId] ? conversations[currentConvId].messages : [];
@@ -854,7 +860,9 @@ function renderMessages(){
 }
 
 function renderHistory(){
-  const msgs = conversations[currentUser?.username]||[];
+  const allMsgs = [];
+  Object.values(conversations).forEach(c => { if(c.messages) allMsgs.push(...c.messages); });
+  const msgs = currentConvId && conversations[currentConvId] ? conversations[currentConvId].messages : allMsgs;
   const list = document.getElementById('historyList');
   const userMsgs = msgs.filter(m=>m.role==='user');
   if(userMsgs.length===0){ list.innerHTML='<div style="font-size:12px;color:rgba(255,255,255,0.25);padding:6px 12px">Sin conversaciones aún</div>'; return; }
@@ -1188,7 +1196,9 @@ function exportExcel(){
   // Si hay datos dinámicos de AVIVA, descargar esos
   if(lastExcelData){ downloadVivaExcel(); return; }
   // Si no, exportar conversación
-  const msgs = conversations[currentUser?.username]||[];
+  const allMsgs = [];
+  Object.values(conversations).forEach(c => { if(c.messages) allMsgs.push(...c.messages); });
+  const msgs = currentConvId && conversations[currentConvId] ? conversations[currentConvId].messages : allMsgs;
   if(!msgs.length){ showToast('No hay datos para exportar','error'); return; }
   const wb = XLSX.utils.book_new();
   const rows = [
@@ -1208,7 +1218,9 @@ function exportExcel(){
 }
 
 function exportPDF(){
-  const msgs = conversations[currentUser?.username]||[];
+  const allMsgs = [];
+  Object.values(conversations).forEach(c => { if(c.messages) allMsgs.push(...c.messages); });
+  const msgs = currentConvId && conversations[currentConvId] ? conversations[currentConvId].messages : allMsgs;
   if(!msgs.length){ showToast('No hay conversación para exportar','error'); return; }
   const {jsPDF} = window.jspdf;
   const doc = new jsPDF();
