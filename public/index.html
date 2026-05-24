@@ -758,21 +758,21 @@ function doLogin(){
   conversations = {};
   pendingFiles = [];
   logActivity(`Inicio de sesión: ${found.username}`);
-  document.getElementById('loginScreen').style.display='none';
-  document.getElementById('appScreen').classList.add('active');
   document.getElementById('sidebarUser').textContent = found.username;
   document.getElementById('sidebarRole').textContent = found.role==='admin'?'Administrador de Sistemas':'Usuario';
   if(found.role==='admin') document.getElementById('navAdmin').style.display='flex';
-  // Cargar conversaciones desde DB
+  document.getElementById('loginScreen').style.display='none';
+  document.getElementById('appScreen').classList.add('active');
+  renderHistory();
+  showChat();
+  startNewConversation();
+  
+  // Cargar conversaciones desde DB en segundo plano
   loadUserConversations().then(() => {
     renderHistory();
-    showChat();
-    // Si hay conversaciones previas, abrir la más reciente
-    const convIds = Object.keys(conversations);
-    if(convIds.length > 0) {
-      currentConvId = convIds[0];
-      renderMessages();
-    }
+  }).catch(() => {
+    // Si falla la DB, continuar sin historial
+    console.warn('No se pudo cargar historial, continuando sin él');
   });
 }
 
