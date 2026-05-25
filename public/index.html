@@ -902,6 +902,48 @@ function renderHistory(){
   `).join('');
 }
 
+function cleanASCIICharts(text) {
+  // Eliminar secciones completas de gráficas ASCII
+  // Patrón: bloque que empieza con título de gráfica y contiene barras
+  const lines = text.split('\n');
+  const cleaned = [];
+  let inASCIIBlock = false;
+  let skipCount = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // Detectar inicio de bloque ASCII (línea con muchos █ ▓ ░)
+    const hasBlockChars = /[█▓░]{2,}/.test(line);
+    // Detectar barras de progreso tipo ████████ 14.3%
+    const isProgressBar = /[█▓░\-=]{3,}.*\d+[%$]/.test(line) || /\d+[%$].*[█▓░\-=]{3,}/.test(line);
+    // Detectar escala numérica al final de gráfica: "0% 5% 10% 15%"  
+    const isScale = /^[\s\d%|+\-]+$/.test(line) && line.includes('%') && line.length > 5;
+    // Detectar línea de separador de gráfica: ====== o ------
+    const isSeparator = /^[=\-─]{5,}$/.test(line.trim());
+    // Detectar línea de eje: |█ o ├─
+    const isAxis = /^[\s]*[│|├└─]/.test(line);
+
+    if (hasBlockChars || isProgressBar || isAxis) {
+      inASCIIBlock = true;
+      skipCount = 3; // saltar también líneas siguientes (escala, etiquetas)
+      continue;
+    }
+
+    if (inASCIIBlock && (isScale || isSeparator || skipCount > 0)) {
+      skipCount = Math.max(0, skipCount - 1);
+      if (line.trim() === '' && skipCount <= 0) inASCIIBlock = false;
+      continue;
+    }
+
+    inASCIIBlock = false;
+    cleaned.push(line);
+  }
+
+  // Limpieza final: remover líneas vacías triples
+  return cleaned.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
 // Contador global para IDs únicos de gráficas
 let chartIdCounter = 0;
 const chartInstances = {};
@@ -1039,16 +1081,29 @@ function formatMsg(text){
 
     // Auto-generar gráfica si hay al menos 2 columnas y 2+ filas con números
     try {
-      const numColIdx = headers.findIndex((h,i) => i>0 && parsedRows.some(r => {
-        const v = (r[i]||'').replace(/[$,% ]/g,'');
-        return !isNaN(parseFloat(v)) && v !== '';
-      }));
+      // Función robusta para parsear números con comas, $, %
+      const parseNum = v => {
+        if(!v) return null;
+        const clean = String(v).replace(/[$\s]/g,'').replace(/,/g,'').replace(/%$/,'').trim();
+        const n = parseFloat(clean);
+        return isNaN(n) ? null : n;
+      };
+      const numColIdx = headers.findIndex((h,i) => i>0 && parsedRows.some(r => parseNum(r[i]) !== null));
+      // Usar columna de texto más descriptiva como etiqueta (no la primera si es número)
+      const labelColIdx = (() => {
+        for(let i=0; i<headers.length; i++){
+          const vals = parsedRows.map(r => r[i]||'');
+          const hasText = vals.some(v => isNaN(parseFloat(v.replace(/[$,% ]/g,''))));
+          if(hasText) return i;
+        }
+        return 0;
+      })();
       if(numColIdx > 0 && parsedRows.length >= 2){
-        const labels = parsedRows.map(r => r[0] || '');
+        const labels = parsedRows.map(r => r[labelColIdx] || '');
         // Encontrar todas las columnas numéricas
         const numCols = headers.map((h,i) => {
           if(i===0) return null;
-          const vals = parsedRows.map(r => parseFloat((r[i]||'').replace(/[$,% ]/g,'')) || 0);
+          const vals = parsedRows.map(r => parseNum(r[i]) || 0);
           const hasNums = vals.some(v => v !== 0);
           return hasNums ? {label: h, data: vals} : null;
         }).filter(Boolean);
@@ -1263,6 +1318,9 @@ async function sendMessage(){
       }
     } catch(e){ displayReply = reply; }
 
+    // Limpiar gráficas ASCII antes de guardar y mostrar
+    displayReply = cleanASCIICharts(displayReply);
+
     conversations[currentConvId].messages.push({role:'assistant',content:displayReply,time:rTime});
     conversations[currentConvId].updatedAt = new Date().toISOString();
     renderMessages();
@@ -1315,9 +1373,29 @@ FORMATO DE RESPUESTA:
 - NUNCA hagas gráficas con caracteres █ o barras de texto ASCII — están prohibidas
 - Cuando presentes datos en tabla, el sistema genera las gráficas automáticamente
 
-CUANDO EL USUARIO PIDA EXPLÍCITAMENTE UN EXCEL O REPORTE DESCARGABLE:
-Responde primero con el análisis en texto y tablas, luego al final agrega exactamente esto:
-%%EXCEL%%{"titulo":"Nombre del reporte","hojas":[{"nombre":"Hoja1","columnas":["Col1","Col2"],"filas":[["val1","val2"]],"totales":["Total","tot"],"tipo_grafica":"bar"}]}%%EXCEL%%
+CUANDO EL USUARIO PIDA UN EXCEL, REPORTE O DOCUMENTO DESCARGABLE:
+Responde primero con el análisis completo en texto y tablas markdown, luego al FINAL agrega el bloque %%EXCEL%% con esta estructura profesional:
+%%EXCEL%%{
+  "titulo": "Nombre del reporte",
+  "subtitulo": "Descripción breve",
+  "periodo": "Mayo 2026",
+  "hojas": [
+    {
+      "nombre": "📊 Nombre Hoja",
+      "columnas": ["Col1","Col2","Col3"],
+      "filas": [["val1",1234,0.95],["val2",5678,0.87]],
+      "totales": ["TOTAL","6912",""],
+      "tipo_grafica": "bar"
+    }
+  ]
+}%%EXCEL%%
+
+REGLAS DEL EXCEL:
+- tipo_grafica puede ser: "bar", "line", "pie", "bar_stacked" o null
+- Los valores numéricos van SIN $ ni % ni comas — solo el número: 1234.56 no "$1,234.56"
+- Para porcentajes usa el decimal: 0.9504 para 95.04%
+- Puedes incluir múltiples hojas
+- El nombre de hoja puede tener emoji: "📊 Ventas", "📈 Producción", "✅ Indicadores"
 
 CAPACIDADES:
 - Analizar datos de ventas, inventario, finanzas, producción, clientes de QAD
@@ -1372,13 +1450,17 @@ function showExcelReady(titulo){
 // ===== EXPORT =====
 async function downloadVivaExcel(){
   if(!lastExcelData){ showToast('No hay datos Excel generados aún','error'); return; }
-  showToast('⏳ Generando Excel profesional...', 'success');
+  showToast('⏳ Generando Excel profesional Vivatex...', 'success');
   try {
     const res = await fetch('/api/excel/generate', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({
         titulo: lastExcelData.titulo || 'Reporte AVIVA',
+        subtitulo: lastExcelData.subtitulo || 'Reporte Ejecutivo',
+        periodo: lastExcelData.periodo || new Date().toLocaleDateString('es-MX',{year:'numeric',month:'long'}),
+        confidencial: 'Confidencial · Uso exclusivo Dirección General',
+        resumen: lastExcelData.resumen || null,
         usuario: currentUser?.username || '',
         hojas: lastExcelData.hojas
       })
