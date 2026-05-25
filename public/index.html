@@ -782,7 +782,20 @@ function doLogin(){
   const p = document.getElementById('loginPass').value;
   const err = document.getElementById('loginErr');
   const found = USERS.find(x => x.username.toUpperCase()===u && x.password===p && x.active);
-  if(!found){ err.style.display='block'; setTimeout(()=>err.style.display='none',3000); return; }
+  if(!found){
+    // Debug: mostrar qué usuario encontró
+    const foundUser = USERS.find(x => x.username.toUpperCase()===u);
+    if(foundUser && foundUser.password !== p){
+      err.textContent = 'Contraseña incorrecta';
+    } else if(!foundUser){
+      err.textContent = 'Usuario no encontrado';
+    } else {
+      err.textContent = 'Usuario inactivo';
+    }
+    err.style.display='block';
+    setTimeout(()=>{ err.style.display='none'; err.textContent='Usuario o contraseña incorrectos'; },4000);
+    return;
+  }
   err.style.display='none';
   currentUser = found;
   currentConvId = null;
@@ -794,15 +807,15 @@ function doLogin(){
   if(found.role==='admin') document.getElementById('navAdmin').style.display='flex';
   document.getElementById('loginScreen').style.display='none';
   document.getElementById('appScreen').classList.add('active');
-  renderHistory();
-  showChat();
-  startNewConversation();
+  
+  try { renderHistory(); } catch(e){ console.warn('renderHistory error:', e); }
+  try { showChat(); } catch(e){ console.warn('showChat error:', e); }
+  try { startNewConversation(); } catch(e){ console.warn('startNewConversation error:', e); }
   
   // Cargar conversaciones desde DB en segundo plano
   loadUserConversations().then(() => {
-    renderHistory();
+    try { renderHistory(); } catch(e){}
   }).catch(() => {
-    // Si falla la DB, continuar sin historial
     console.warn('No se pudo cargar historial, continuando sin él');
   });
 }
