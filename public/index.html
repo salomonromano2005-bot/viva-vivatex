@@ -798,11 +798,12 @@ async function newChat(){
 }
 
 // ===== AUTH =====
-function doLogin(){
+async function doLogin(){
   try {
     var uEl = document.getElementById('loginUser');
     var pEl = document.getElementById('loginPass');
     var err = document.getElementById('loginErr');
+    var btn = document.getElementById('loginBtn');
     if(!uEl || !pEl){ alert('Error: campos no encontrados'); return; }
     var u = uEl.value.trim().toUpperCase();
     var p = pEl.value.trim();
@@ -812,30 +813,54 @@ function doLogin(){
       setTimeout(function(){ err.style.display='none'; }, 3000);
       return; 
     }
-    var found = null;
-    for(var i=0; i<USERS.length; i++){
-      if(USERS[i].username.toUpperCase()===u && USERS[i].password===p && USERS[i].active){
-        found = USERS[i];
-        break;
-      }
-    }
-    if(!found){
-      var foundUser = null;
-      for(var i=0; i<USERS.length; i++){
-        if(USERS[i].username.toUpperCase()===u){ foundUser = USERS[i]; break; }
-      }
-      if(foundUser && foundUser.password !== p){
-        err.textContent = 'Contraseña incorrecta';
-      } else if(!foundUser){
-        err.textContent = 'Usuario no encontrado: ' + u;
-      } else {
-        err.textContent = 'Usuario inactivo';
-      }
-      err.style.display='block';
-      setTimeout(function(){ err.style.display='none'; err.textContent='Usuario o contraseña incorrectos'; }, 4000);
-      return;
-    }
+    // Deshabilitar botón mientras valida
+    if(btn) btn.disabled = true;
     err.style.display='none';
+
+    // 1. Intentar login contra PostgreSQL
+    var found = null;
+    try {
+      var res = await fetch('/api/login', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({username: u, password: p})
+      });
+      var data = await res.json();
+      if(data.ok) {
+        found = data.user;
+      } else {
+        // 2. Fallback: validar contra array local
+        for(var i=0; i<USERS.length; i++){
+          if(USERS[i].username.toUpperCase()===u && USERS[i].password===p && USERS[i].active){
+            found = USERS[i]; break;
+          }
+        }
+        if(!found){
+          err.textContent = data.error || 'Usuario o contraseña incorrectos';
+          err.style.display='block';
+          setTimeout(function(){ err.style.display='none'; }, 4000);
+          if(btn) btn.disabled = false;
+          return;
+        }
+      }
+    } catch(fetchErr){
+      // Sin conexión: fallback local
+      for(var i=0; i<USERS.length; i++){
+        if(USERS[i].username.toUpperCase()===u && USERS[i].password===p && USERS[i].active){
+          found = USERS[i]; break;
+        }
+      }
+      if(!found){
+        err.textContent = 'Error de conexión. Intenta de nuevo.';
+        err.style.display='block';
+        setTimeout(function(){ err.style.display='none'; }, 4000);
+        if(btn) btn.disabled = false;
+        return;
+      }
+    }
+
+    // Login exitoso
+    if(btn) btn.disabled = false;
     currentUser = found;
     currentConvId = null;
     conversations = {};
