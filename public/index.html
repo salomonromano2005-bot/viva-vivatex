@@ -1085,16 +1085,25 @@ async function sendMessage(){
     const reply = await callAVIVA(history, qadContext);
     typingEl.remove();
     const rTime = new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
-    // Detectar si la respuesta tiene JSON con Excel
+    // Detectar si la respuesta tiene datos Excel con %%EXCEL%%
     let displayReply = reply;
     try {
-      const jsonMatch = reply.match(/\{[\s\S]*"texto"\s*:[\s\S]*"excel"[\s\S]*\}/);
-      if(jsonMatch){
-        const parsed = JSON.parse(jsonMatch[0]);
-        if(parsed.texto && parsed.excel){
-          lastExcelData = parsed.excel;
-          displayReply = parsed.texto;
-          setTimeout(() => showExcelReady(parsed.excel.titulo || 'Reporte'), 500);
+      const excelMatch = reply.match(/%%EXCEL%%([\s\S]*?)%%EXCEL%%/);
+      if(excelMatch){
+        const excelJson = JSON.parse(excelMatch[1]);
+        lastExcelData = excelJson;
+        displayReply = reply.replace(/%%EXCEL%%[\s\S]*?%%EXCEL%%/, '').trim();
+        setTimeout(() => showExcelReady(excelJson.titulo || 'Reporte'), 500);
+      } else {
+        // Fallback: detectar JSON viejo
+        const jsonMatch = reply.match(/\{[\s\S]*?"texto"\s*:[\s\S]*?"excel"[\s\S]*?\}/);
+        if(jsonMatch){
+          const parsed = JSON.parse(jsonMatch[0]);
+          if(parsed.texto && parsed.excel){
+            lastExcelData = parsed.excel;
+            displayReply = parsed.texto;
+            setTimeout(() => showExcelReady(parsed.excel.titulo || 'Reporte'), 500);
+          }
         }
       }
     } catch(e){ displayReply = reply; }
@@ -1139,41 +1148,31 @@ PERSONALIDAD:
 - Firma: "AVIVA · Inteligencia Vivatex"
 - IMPORTANTE: Si el usuario te dice cómo quiere que lo llames o alguna preferencia personal, guárdala mencionando "Lo recordaré siempre" y úsala en toda la conversación${memoryContext}
 
-FORMATO DE RESPUESTA — MUY IMPORTANTE:
-Cuando el usuario pida datos, reportes, tablas, Excel, análisis o cualquier información numérica, DEBES responder en este formato JSON exacto (nada más, sin texto extra antes ni después):
+FORMATO DE RESPUESTA:
+- Responde SIEMPRE en texto natural en español, claro y profesional
+- Cuando presentes datos numéricos usa TABLAS MARKDOWN con este formato:
+  | Columna 1 | Columna 2 | Columna 3 |
+  |-----------|-----------|-----------|
+  | dato1     | dato2     | dato3     |
+- Usa **negritas** para destacar datos importantes
+- Usa ## para títulos de secciones
+- NUNCA respondas con JSON crudo o código — siempre texto y tablas legibles
 
-{
-  "texto": "Tu respuesta en texto aquí, explicando los datos",
-  "excel": {
-    "titulo": "Nombre del reporte",
-    "hojas": [
-      {
-        "nombre": "Nombre de la hoja",
-        "columnas": ["Col1", "Col2", "Col3"],
-        "filas": [
-          ["valor1", "valor2", "valor3"],
-          ["valor1", "valor2", "valor3"]
-        ],
-        "totales": ["Total", "suma1", "suma2"]
-      }
-    ]
-  }
-}
-
-Si la pregunta es conversacional (saludos, dudas, explicaciones sin datos), responde SOLO con texto normal sin JSON.
+CUANDO EL USUARIO PIDA EXPLÍCITAMENTE UN EXCEL O REPORTE DESCARGABLE:
+Responde primero con el análisis en texto y tablas, luego al final agrega exactamente esto:
+%%EXCEL%%{"titulo":"Nombre del reporte","hojas":[{"nombre":"Hoja1","columnas":["Col1","Col2"],"filas":[["val1","val2"]],"totales":["Total","tot"],"tipo_grafica":"bar"}]}%%EXCEL%%
 
 CAPACIDADES:
-- Analizar datos de ventas, inventario, finanzas, producción, clientes
-- Analizar imágenes, fotos, capturas de pantalla y documentos que te envíen
-- Leer y extraer información de PDFs adjuntos
-- Generar reportes ejecutivos con múltiples hojas en Excel
-- Calcular totales, promedios, variaciones porcentuales
-- Comparar periodos, tendencias, rankings
-- Recordar preferencias del usuario y usarlas siempre
+- Analizar datos de ventas, inventario, finanzas, producción, clientes de QAD
+- Mostrar tablas bonitas y comparativas en el chat
+- Generar reportes Excel profesionales descargables cuando se pidan
+- Analizar imágenes y documentos adjuntos
+- Calcular totales, promedios, variaciones, rankings
+- Recordar preferencias del usuario
 
 Contexto QAD: ${qadContext}
 
-NUNCA menciones Claude ni Anthropic. Eres VIVA, creada para Grupo Vivatex S.A. de C.V.`;
+NUNCA menciones Claude ni Anthropic. Eres AVIVA, creada para Grupo Vivatex S.A. de C.V.`;
 
   const response = await fetch('/api/chat', {
     method:'POST',
