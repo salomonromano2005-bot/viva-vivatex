@@ -66,12 +66,27 @@ async function initDB() {
     `);
     // Insertar usuarios base si no existen
     const baseUsers = [
-      {username:'JRZ123',      password:'JACOBOrz4646',     role:'user'},
-      {username:'JRR234',      password:'JACOBOrr8989',     role:'user'},
-      {username:'SRR456',      password:'SIMONrr0202',      role:'user'},
-      {username:'SRB0707',     password:'SALOrb0909',       role:'user'},
-      {username:'SISTEMAS1900',password:'SISTEMASviva2026', role:'admin'},
-      {username:'LEO2026',     password:'LEOg1986',         role:'user'},
+      {username:'JRZ123',           password:'JACOBOrz4646',     role:'user'},
+      {username:'JRR234',           password:'JACOBOrr8989',     role:'user'},
+      {username:'SRR456',           password:'SIMONrr0202',      role:'user'},
+      {username:'SRB0707',          password:'SALOrb0909',       role:'user'},
+      {username:'SISTEMAS1900',     password:'SISTEMASviva2026', role:'admin'},
+      {username:'LEO2026',          password:'LEOg1986',         role:'user'},
+      {username:'ISMAEL_VENTAS',    password:'Vivatex2026',      role:'user'},
+      {username:'ISRAEL_ACABADO',   password:'Vivatex2026',      role:'user'},
+      {username:'MEMO_TEJIDO',      password:'Vivatex2026',      role:'user'},
+      {username:'CARLOSM_H',        password:'Vivatex2026',      role:'user'},
+      {username:'MARTIN_CONTA',     password:'Vivatex2026',      role:'user'},
+      {username:'VENTAS_MONICA',    password:'Vivatex2026',      role:'user'},
+      {username:'VENTAS_EDGAR',     password:'Vivatex2026',      role:'user'},
+      {username:'VENTAS_AMELIA',    password:'Vivatex2026',      role:'user'},
+      {username:'VENTAS_JORGE',     password:'Vivatex2026',      role:'user'},
+      {username:'GTE_ACABADO',      password:'Vivatex2026',      role:'user'},
+      {username:'GTE_TEJIDO',       password:'Vivatex2026',      role:'user'},
+      {username:'GTE_HILATURA',     password:'Vivatex2026',      role:'user'},
+      {username:'COBRANZA_CLAUDIA', password:'Vivatex2026',      role:'user'},
+      {username:'COBRANZA_OLIVIA',  password:'Vivatex2026',      role:'user'},
+      {username:'ADMON_LUCY',       password:'Vivatex2026',      role:'user'},
     ];
     for(const u of baseUsers){
       await pool.query(`
@@ -420,7 +435,7 @@ app.post('/api/chat', async (req, res) => {
     const username = req.body.username || '';
     let permContext = '';
 
-    const NO_CONTABLE_USERS = ['LEO2026','GTE_ACABADO','GTE_TEJIDO','GTE_HILATURA'];
+    const NO_CONTABLE_USERS = ['LEO2026','GTE_ACABADO','GTE_TEJIDO','GTE_HILATURA','ISRAEL_ACABADO','MEMO_TEJIDO','CARLOSM_H'];
     const VENDEDOR_USERS = {
       'VENTAS_MONICA': 'Monica Caceres',
       'VENTAS_EDGAR':  'Edgar Zarate',
