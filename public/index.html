@@ -908,13 +908,30 @@ function showChat(){
   renderMessages();
 }
 
-function showAdmin(){
+async function showAdmin(){
   if(!currentUser || currentUser.role!=='admin') return;
   document.getElementById('chatArea').style.display='none';
   document.getElementById('adminPanel').classList.add('active');
   document.getElementById('navChat').classList.remove('active');
   document.getElementById('navAdmin').classList.add('active');
   closeSidebar();
+  // Cargar usuarios desde PostgreSQL
+  try {
+    const res = await fetch('/api/usuarios');
+    const data = await res.json();
+    if(data.users && data.users.length > 0){
+      // Mergear con USERS local — PostgreSQL tiene prioridad
+      data.users.forEach(dbUser => {
+        const existing = USERS.find(u => u.username.toUpperCase() === dbUser.username.toUpperCase());
+        if(!existing){
+          USERS.push({id: dbUser.id+100, username: dbUser.username, password:'****', role: dbUser.role, active: dbUser.active});
+        } else {
+          existing.role = dbUser.role;
+          existing.active = dbUser.active;
+        }
+      });
+    }
+  } catch(e){ console.warn('No se pudo cargar usuarios de DB:', e); }
   renderUsersTable();
   renderLogs();
   document.getElementById('statUsers').textContent = USERS.filter(u=>u.active).length;
@@ -1671,14 +1688,24 @@ function openAddUser(){ editingUserId=null; document.getElementById('modalTitle'
 function editUser(id){ const u=USERS.find(x=>x.id===id); if(!u) return; editingUserId=id; document.getElementById('modalTitle').textContent='Editar usuario'; document.getElementById('modalUser').value=u.username; document.getElementById('modalPass').value=u.password; document.getElementById('modalRole').value=u.role; document.getElementById('userModal').classList.add('open'); }
 function closeModal(){ document.getElementById('userModal').classList.remove('open'); }
 
-function saveUser(){
+async function saveUser(){
   const username = document.getElementById('modalUser').value.trim().toUpperCase();
   const password = document.getElementById('modalPass').value.trim();
   const role = document.getElementById('modalRole').value;
   if(!username||!password){ showToast('Completa todos los campos','error'); return; }
+  try {
+    const res = await fetch('/api/usuarios', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({username, password, role})
+    });
+    const data = await res.json();
+    if(!data.ok){ showToast('Error guardando usuario','error'); return; }
+  } catch(e){ showToast('Error de conexión','error'); return; }
+
   if(editingUserId){
     const u=USERS.find(x=>x.id===editingUserId);
-    u.username=username; u.password=password; u.role=role;
+    if(u){ u.username=username; u.password=password; u.role=role; }
     showToast('Usuario actualizado','success');
     logActivity(`Usuario modificado: ${username}`);
   } else {
@@ -1691,10 +1718,18 @@ function saveUser(){
   document.getElementById('statUsers').textContent=USERS.filter(u=>u.active).length;
 }
 
-function toggleUser(id){
+async function toggleUser(id){
   const u=USERS.find(x=>x.id===id);
+  if(!u) return;
   if(u.username==='SISTEMAS1900'){ showToast('No puedes desactivar el usuario de sistemas','error'); return; }
   u.active=!u.active;
+  try {
+    if(!u.active){
+      await fetch('/api/usuarios/'+u.username, {method:'DELETE'});
+    } else {
+      await fetch('/api/usuarios', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({username:u.username,password:u.password,role:u.role})});
+    }
+  } catch(e){ console.warn('Error toggling user:', e); }
   showToast(`Usuario ${u.active?'activado':'desactivado'}`,'success');
   logActivity(`Usuario ${u.active?'activado':'desactivado'}: ${u.username}`);
   renderUsersTable();
