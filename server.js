@@ -7,6 +7,13 @@ const { Pool } = require('pg');
 
 const app = express();
 app.use(express.json({ limit: '50mb' }));
+// Servir archivos estáticos sin caché para siempre tener la versión más reciente
+app.use((req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+});
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ============================================================
@@ -233,29 +240,48 @@ app.delete('/api/conversations/:username/:convId', async (req, res) => {
 
 // ---- Generar Excel Profesional ----
 app.post('/api/excel/generate', async (req, res) => {
-  const { titulo, usuario, hojas } = req.body;
+  const { titulo, usuario, hojas, subtitulo, periodo, confidencial, resumen } = req.body;
   if (!hojas || !hojas.length) return res.status(400).json({ error: 'Sin datos' });
 
   try {
     const { spawn } = require('child_process');
-    const input = JSON.stringify({ titulo, usuario, hojas });
-    
-    const py = spawn('python3', [path.join(__dirname, 'generate_excel.py')]);
+    const fs = require('fs');
+    const os = require('os');
+    const tmpPath = path.join(os.tmpdir(), `vivatex_${Date.now()}.xlsx`);
+
+    const input = JSON.stringify({
+      titulo: titulo || 'Reporte Vivatex',
+      subtitulo: subtitulo || 'Reporte Ejecutivo',
+      empresa: 'Grupo Vivatex S.A. de C.V.',
+      periodo: periodo || new Date().toLocaleDateString('es-MX', { year:'numeric', month:'long' }),
+      confidencial: confidencial || 'Confidencial · Uso exclusivo Dirección General',
+      resumen: resumen || null,
+      hojas
+    });
+
+    const py = spawn('python3', [path.join(__dirname, 'generate_excel.py'), input, tmpPath]);
     let output = '';
     let errOut = '';
-    
+
     py.stdout.on('data', d => output += d.toString());
     py.stderr.on('data', d => errOut += d.toString());
-    py.stdin.write(input);
-    py.stdin.end();
-    
+
     py.on('close', (code) => {
       if (code !== 0) {
         console.error('Error generando Excel:', errOut);
-        return res.status(500).json({ error: 'Error generando Excel' });
+        return res.status(500).json({ error: 'Error generando Excel: ' + errOut });
       }
-      const base64 = output.trim();
-      res.json({ ok: true, base64, filename: `Vivatex_${(titulo||'Reporte').replace(/\s+/g,'_')}_${new Date().toISOString().split('T')[0]}.xlsx` });
+      try {
+        const result = JSON.parse(output.trim());
+        if (!result.success) return res.status(500).json({ error: result.error });
+        const fileBuffer = fs.readFileSync(tmpPath);
+        const base64 = fileBuffer.toString('base64');
+        fs.unlinkSync(tmpPath);
+        const filename = `Vivatex_${(titulo||'Reporte').replace(/[^a-zA-Z0-9_]/g,'_')}_${new Date().toISOString().split('T')[0]}.xlsx`;
+        res.json({ ok: true, base64, filename });
+      } catch(e) {
+        res.status(500).json({ error: 'Error procesando Excel: ' + e.message });
+      }
     });
   } catch(e) {
     console.error('Error Excel:', e);
