@@ -54,12 +54,94 @@ async function initDB() {
         UNIQUE(username, conv_id)
       );
     `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS usuarios (
+        id SERIAL PRIMARY KEY,
+        username VARCHAR(100) UNIQUE NOT NULL,
+        password VARCHAR(255) NOT NULL,
+        role VARCHAR(50) DEFAULT 'user',
+        active BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+    // Insertar usuarios base si no existen
+    const baseUsers = [
+      {username:'JRZ123',      password:'JACOBOrz4646',     role:'user'},
+      {username:'JRR234',      password:'JACOBOrr8989',     role:'user'},
+      {username:'SRR456',      password:'SIMONrr0202',      role:'user'},
+      {username:'SRB0707',     password:'SALOrb0909',       role:'user'},
+      {username:'SISTEMAS1900',password:'SISTEMASviva2026', role:'admin'},
+      {username:'LEO2026',     password:'LEOg1986',         role:'user'},
+    ];
+    for(const u of baseUsers){
+      await pool.query(`
+        INSERT INTO usuarios (username, password, role, active)
+        VALUES ($1, $2, $3, true)
+        ON CONFLICT (username) DO NOTHING
+      `, [u.username, u.password, u.role]);
+    }
     console.log('✅ Base de datos PostgreSQL conectada');
   } catch (e) {
     console.error('❌ Error conectando DB:', e.message);
     pool = null;
   }
 }
+
+// ===== ENDPOINT DE LOGIN =====
+app.post('/api/login', async (req, res) => {
+  const { username, password } = req.body;
+  if(!username || !password) return res.status(400).json({ error: 'Faltan datos' });
+  try {
+    if(pool){
+      const result = await pool.query(
+        'SELECT id, username, role, active FROM usuarios WHERE UPPER(username)=$1 AND password=$2',
+        [username.toUpperCase(), password]
+      );
+      if(result.rows.length === 0) return res.json({ ok: false, error: 'Usuario o contraseña incorrectos' });
+      const user = result.rows[0];
+      if(!user.active) return res.json({ ok: false, error: 'Usuario inactivo' });
+      return res.json({ ok: true, user: { id: user.id, username: user.username, role: user.role, active: true } });
+    } else {
+      // Fallback sin DB
+      return res.json({ ok: false, error: 'Base de datos no disponible' });
+    }
+  } catch(e) {
+    console.error('Error login:', e.message);
+    res.status(500).json({ ok: false, error: 'Error del servidor' });
+  }
+});
+
+// ===== ENDPOINT GESTIÓN USUARIOS =====
+app.get('/api/usuarios', async (req, res) => {
+  try {
+    if(!pool) return res.json({ users: [] });
+    const result = await pool.query('SELECT id, username, role, active FROM usuarios ORDER BY id');
+    res.json({ users: result.rows });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/usuarios', async (req, res) => {
+  const { username, password, role } = req.body;
+  if(!username || !password) return res.status(400).json({ error: 'Faltan datos' });
+  try {
+    if(!pool) return res.status(500).json({ error: 'Sin DB' });
+    await pool.query(
+      'INSERT INTO usuarios (username, password, role, active) VALUES ($1, $2, $3, true) ON CONFLICT (username) DO UPDATE SET password=$2, role=$3, active=true',
+      [username.toUpperCase(), password, role || 'user']
+    );
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/usuarios/:username', async (req, res) => {
+  const { username } = req.params;
+  if(username.toUpperCase() === 'SISTEMAS1900') return res.status(400).json({ error: 'No puedes eliminar este usuario' });
+  try {
+    if(!pool) return res.status(500).json({ error: 'Sin DB' });
+    await pool.query('UPDATE usuarios SET active=false WHERE UPPER(username)=$1', [username.toUpperCase()]);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
 
 // Guardar datos QAD en DB
 async function saveQADToDB(key, filename, sheetName, data) {
