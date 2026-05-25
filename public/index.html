@@ -13,6 +13,7 @@
 <title>AVIVA — Asistente Inteligente Vivatex</title>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Sora:wght@400;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
 <style>
@@ -199,6 +200,13 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;background
 .msg-bubble tr:nth-child(even) td{background:#f5faf3;}
 .msg-bubble tr:hover td{background:#edf7e8;}
 .msg-bubble tr:last-child td{border-bottom:none;}
+.chart-container{background:#fff;border:1px solid #e4eade;border-radius:12px;padding:16px;margin:12px 0;box-shadow:0 2px 10px rgba(0,0,0,0.06);}
+.chart-container canvas{max-height:320px;}
+.chart-title{font-size:13px;font-weight:700;color:#1E6B2E;margin-bottom:10px;text-align:center;letter-spacing:0.3px;}
+.chart-type-btns{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;}
+.chart-type-btn{background:#f0f7e8;border:1px solid #c8e6b0;color:#1E6B2E;border-radius:6px;padding:3px 10px;font-size:11px;font-weight:600;cursor:pointer;transition:all .2s;}
+.chart-type-btn.active{background:#1E6B2E;color:#fff;border-color:#1E6B2E;}
+.chart-type-btn:hover{background:#6BBF3E;color:#fff;border-color:#6BBF3E;}
 .msg-time{font-size:11px;color:#aab4a0;margin-top:6px;text-align:right;}
 .msg.user .msg-time{color:rgba(255,255,255,0.6);}
 
@@ -894,6 +902,89 @@ function renderHistory(){
   `).join('');
 }
 
+// Contador global para IDs únicos de gráficas
+let chartIdCounter = 0;
+const chartInstances = {};
+
+function renderChart(chartData, containerId){
+  const c = document.getElementById(containerId);
+  if(!c) return;
+  const labels = chartData.labels || [];
+  const datasets = chartData.datasets || [];
+  const type = chartData.type || 'bar';
+  if(chartInstances[containerId]){ chartInstances[containerId].destroy(); }
+  const vivaColors = [
+    'rgba(107,191,62,0.85)','rgba(30,107,46,0.85)','rgba(74,154,32,0.85)',
+    'rgba(162,213,100,0.85)','rgba(20,80,30,0.85)','rgba(200,230,150,0.85)',
+    'rgba(50,140,60,0.85)','rgba(130,200,80,0.85)'
+  ];
+  const borderColors = vivaColors.map(c=>c.replace('0.85','1'));
+  const ds = datasets.map((d,i)=>({
+    label: d.label||'',
+    data: d.data||[],
+    backgroundColor: type==='line'? vivaColors[i%vivaColors.length] : labels.map((_,j)=>vivaColors[j%vivaColors.length]),
+    borderColor: type==='line'? borderColors[i%borderColors.length] : borderColors.map((_,j)=>borderColors[j%borderColors.length]),
+    borderWidth: type==='line'?2.5:1.5,
+    fill: type==='line'?false:undefined,
+    tension: 0.4,
+    borderRadius: type==='bar'?6:0,
+    pointRadius: type==='line'?5:undefined,
+    pointBackgroundColor: type==='line'?'#1E6B2E':undefined,
+  }));
+  chartInstances[containerId] = new Chart(c, {
+    type: type,
+    data: { labels, datasets: ds },
+    options: {
+      responsive:true, maintainAspectRatio:true,
+      plugins:{
+        legend:{ display: datasets.length>1, labels:{ font:{family:'Outfit',size:12}, color:'#2d4a20' } },
+        tooltip:{ callbacks:{ label: ctx => ` ${ctx.dataset.label||''}: ${typeof ctx.parsed.y==='number'?ctx.parsed.y.toLocaleString('es-MX'):ctx.parsed}` } }
+      },
+      scales: (type==='pie'||type==='doughnut') ? {} : {
+        x:{ ticks:{font:{family:'Outfit',size:11},color:'#4a6a3a'}, grid:{display:false} },
+        y:{ ticks:{font:{family:'Outfit',size:11},color:'#4a6a3a', callback:v=>typeof v==='number'?v.toLocaleString('es-MX'):v}, grid:{color:'rgba(107,191,62,0.1)'} }
+      }
+    }
+  });
+}
+
+function buildChartHTML(chartData, id){
+  const tipos = [
+    {k:'bar',label:'Barras'},
+    {k:'line',label:'Línea'},
+    {k:'pie',label:'Pastel'},
+    {k:'doughnut',label:'Dona'},
+    {k:'polarArea',label:'Polar'},
+    {k:'radar',label:'Radar'},
+  ];
+  const btns = tipos.map(t=>`<button class="chart-type-btn${t.k===chartData.type?' active':''}" onclick="switchChartType('${id}','${t.k}',this)">${t.label}</button>`).join('');
+  return `<div class="chart-container">
+    <div class="chart-title">${escHtml(chartData.title||'Gráfica')}</div>
+    <div class="chart-type-btns">${btns}</div>
+    <canvas id="${id}"></canvas>
+  </div>`;
+}
+
+function switchChartType(id, type, btn){
+  if(!chartInstances[id]) return;
+  const data = chartInstances[id].data;
+  chartInstances[id].destroy();
+  const btns = btn.closest('.chart-type-btns').querySelectorAll('.chart-type-btn');
+  btns.forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  const canvas = document.getElementById(id);
+  chartInstances[id] = new Chart(canvas, {
+    type: type,
+    data: data,
+    options: chartInstances[id]?.options || {}
+  });
+  // Re-render usando los datos guardados
+  const stored = window._chartDataStore && window._chartDataStore[id];
+  if(stored){ stored.type = type; renderChart(stored, id); }
+}
+
+window._chartDataStore = {};
+
 function formatMsg(text){
   // Si es JSON con estructura excel, extraer solo el texto
   try {
@@ -903,6 +994,19 @@ function formatMsg(text){
       if(parsed.texto) text = parsed.texto;
     }
   } catch(e){}
+
+  // Detectar bloques %%CHART%% y reemplazar por canvas
+  text = text.replace(/%%CHART%%([\s\S]*?)%%CHART%%/g, (match, jsonStr) => {
+    try {
+      const chartData = JSON.parse(jsonStr.trim());
+      const id = 'chart_' + (++chartIdCounter);
+      window._chartDataStore[id] = chartData;
+      const html = buildChartHTML(chartData, id);
+      // Render después de que el DOM se actualice
+      setTimeout(()=>renderChart(chartData, id), 80);
+      return html;
+    } catch(e){ return ''; }
+  });
 
   // Renderizar tablas markdown | col | col |
   text = text.replace(/\|(.+)\|\n\|[-| :]+\|\n((?:\|.+\|\n?)*)/g, (match, header, rows) => {
@@ -1158,6 +1262,13 @@ FORMATO DE RESPUESTA:
 - Usa ## para títulos de secciones
 - NUNCA respondas con JSON crudo o código — siempre texto y tablas legibles
 
+CUANDO EL USUARIO PIDA UNA GRÁFICA O VISUALIZACIÓN:
+Incluye el bloque %%CHART%% con los datos. Ponlo DESPUÉS de la tabla con los mismos datos. Ejemplo:
+%%CHART%%{"title":"Ventas por Mes","type":"bar","labels":["Ene","Feb","Mar","Abr"],"datasets":[{"label":"Ventas MXN","data":[320000,450000,380000,510000]}]}%%CHART%%
+Tipos: bar (barras), line (línea), pie (pastel), doughnut (dona), polarArea (polar), radar.
+Puedes poner múltiples datasets. Usa valores numéricos sin símbolos de moneda dentro del JSON.
+Siempre que presentes datos con comparaciones o tendencias, incluye una gráfica.
+
 CUANDO EL USUARIO PIDA EXPLÍCITAMENTE UN EXCEL O REPORTE DESCARGABLE:
 Responde primero con el análisis en texto y tablas, luego al final agrega exactamente esto:
 %%EXCEL%%{"titulo":"Nombre del reporte","hojas":[{"nombre":"Hoja1","columnas":["Col1","Col2"],"filas":[["val1","val2"]],"totales":["Total","tot"],"tipo_grafica":"bar"}]}%%EXCEL%%
@@ -1165,6 +1276,7 @@ Responde primero con el análisis en texto y tablas, luego al final agrega exact
 CAPACIDADES:
 - Analizar datos de ventas, inventario, finanzas, producción, clientes de QAD
 - Mostrar tablas bonitas y comparativas en el chat
+- Generar gráficas interactivas (barras, línea, pastel, dona, polar, radar) directamente en el chat
 - Generar reportes Excel profesionales descargables cuando se pidan
 - Analizar imágenes y documentos adjuntos
 - Calcular totales, promedios, variaciones, rankings
