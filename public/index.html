@@ -1418,14 +1418,17 @@ async function sendMessage(){
       displayReply = displayReply.replace(/\{[\s\S]*?"hojas"[\s\S]*?"columnas"[\s\S]*?\}/g, '');
       displayReply = displayReply.replace(/\{[\s\S]*?"filas"[\s\S]*?"columnas"[\s\S]*?\}/g, '');
       displayReply = displayReply.replace(/\{[\s\S]*?"titulo"[\s\S]*?"hojas"[\s\S]*?\}/g, '');
-      // Limpiar líneas que sean solo JSON residual
+      // Limpiar líneas que sean solo JSON residual (NO eliminar tablas markdown)
       displayReply = displayReply.split('\n').filter(line => {
         const t = line.trim();
         if(!t) return true;
-        // Eliminar líneas que parecen JSON: empiezan con { [ " y contienen :
-        if((t.startsWith('{') || t.startsWith('[') || t.startsWith('"')) && t.includes(':')) return false;
+        // NUNCA eliminar líneas de tablas markdown (empiezan con |)
+        if(t.startsWith('|')) return true;
+        // Eliminar solo JSON puro: {"key": val} o ["val1","val2"]
+        if(t.startsWith('{') && t.endsWith('}') && t.includes(':')) return false;
+        if(t.startsWith('[') && (t.endsWith(']') || t.endsWith('],'))) return false;
         if(t === '},' || t === '}' || t === '],' || t === ']') return false;
-        if(/^"[a-z_]+":\s/.test(t)) return false; // "key": value
+        if(/^"[a-z_]+":\s/.test(t) && !t.includes('|')) return false;
         return true;
       }).join('\n').replace(/\n{3,}/g, '\n\n').trim();
     } catch(e){}
