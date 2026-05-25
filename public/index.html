@@ -546,6 +546,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;background
           <div class="admin-section-head">
             <h3>Gestión de usuarios</h3>
             <button class="action-btn" onclick="openAddUser()">+ Agregar usuario</button>
+            <button class="action-btn" style="background:#2563eb;color:#fff" onclick="migrateUsersToPostgres()">🔄 Guardar todos en BD</button>
           </div>
           <div class="admin-section-body" style="padding:0">
             <table class="users-table">
@@ -1687,8 +1688,26 @@ function renderUsersTable(){
   `).join('');
 }
 
+async function migrateUsersToPostgres(){
+  showToast('⏳ Sincronizando usuarios...', 'success');
+  let ok = 0, fail = 0;
+  for(const u of USERS){
+    if(u.password === '****' || !u.password) continue; // skip usuarios sin contraseña conocida
+    try {
+      const res = await fetch('/api/usuarios', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({username: u.username, password: u.password, role: u.role})
+      });
+      const data = await res.json();
+      if(data.ok) ok++; else fail++;
+    } catch(e){ fail++; }
+  }
+  showToast(`✅ ${ok} usuarios sincronizados${fail>0?' | '+fail+' fallaron':''}`, 'success');
+}
+
 function openAddUser(){ editingUserId=null; document.getElementById('modalTitle').textContent='Agregar usuario'; document.getElementById('modalUser').value=''; document.getElementById('modalPass').value=''; document.getElementById('modalRole').value='user'; document.getElementById('userModal').classList.add('open'); }
-function editUser(id){ const u=USERS.find(x=>x.id===id); if(!u) return; editingUserId=id; document.getElementById('modalTitle').textContent='Editar usuario'; document.getElementById('modalUser').value=u.username; document.getElementById('modalPass').value=u.password; document.getElementById('modalRole').value=u.role; document.getElementById('userModal').classList.add('open'); }
+function editUser(id){ const u=USERS.find(x=>x.id===id); if(!u) return; editingUserId=id; document.getElementById('modalTitle').textContent='Editar usuario'; document.getElementById('modalUser').value=u.username; document.getElementById('modalPass').value=u.password==='****'?'':u.password; document.getElementById('modalPass').placeholder=u.password==='****'?'Ingresa nueva contraseña':'••••••••'; document.getElementById('modalRole').value=u.role; document.getElementById('userModal').classList.add('open'); }
 function closeModal(){ document.getElementById('userModal').classList.remove('open'); }
 
 async function saveUser(){
