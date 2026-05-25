@@ -673,6 +673,27 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;background
 
 <script>
 // ===== DATA =====
+// Permisos por usuario
+const USER_PERMISSIONS = {
+  'JRZ123':          { type:'full', restrict:[] },
+  'JRR234':          { type:'full', restrict:[] },
+  'SRR456':          { type:'full', restrict:[] },
+  'SRB0707':         { type:'full', restrict:[] },
+  'SISTEMAS1900':    { type:'admin', restrict:[] },
+  'LEO2026':         { type:'no_contable', restrict:['contabilidad','activos','pasivos','balance general','estado de resultados','cuentas contables'] },
+  'ISMAEL_VENTAS':   { type:'ventas', restrict:[], allow:['ventas','produccion','pedidos','almacen','tela acabada','vendedores','bodega'] },
+  'GTE_ACABADO':     { type:'no_contable', restrict:['contabilidad','activos','pasivos','balance general','estado de resultados','cuentas contables'] },
+  'GTE_TEJIDO':      { type:'no_contable', restrict:['contabilidad','activos','pasivos','balance general','estado de resultados','cuentas contables'] },
+  'GTE_HILATURA':    { type:'no_contable', restrict:['contabilidad','activos','pasivos','balance general','estado de resultados','cuentas contables'] },
+  'MARTIN_CONTA':    { type:'full', restrict:[] },
+  'VENTAS_MONICA':   { type:'vendedor', restrict:[], vendedor:'Monica Caceres', allow:['ventas','pedidos','atrasos','clientes','bodega','almacen'] },
+  'VENTAS_EDGAR':    { type:'vendedor', restrict:[], vendedor:'Edgar Zarate', allow:['ventas','pedidos','atrasos','clientes','bodega','almacen'] },
+  'VENTAS_AMELIA':   { type:'vendedor', restrict:[], vendedor:'Amelia Aragon', allow:['ventas','pedidos','atrasos','clientes','bodega','almacen'] },
+  'COBRANZA_CLAUDIA':{ type:'full', restrict:[] },
+  'COBRANZA_OLIVIA': { type:'full', restrict:[] },
+  'ADMON_LUCY':      { type:'full', restrict:[] },
+};
+
 let USERS = [
   {id:1, username:'JRZ123',      password:'JACOBOrz4646',      role:'user',  active:true},
   {id:2, username:'JRR234',      password:'JACOBOrr8989',      role:'user',  active:true},
@@ -1410,18 +1431,18 @@ PERSONALIDAD:
 - Firma: "AVIVA · Inteligencia Vivatex"
 - IMPORTANTE: Si el usuario te dice cómo quiere que lo llames o alguna preferencia personal, guárdala mencionando "Lo recordaré siempre" y úsala en toda la conversación${memoryContext}
 
-FORMATO DE RESPUESTA:
+FORMATO DE RESPUESTA — REGLAS ABSOLUTAS:
 - Responde SIEMPRE en texto natural en español, claro y profesional
-- Cuando presentes datos numéricos usa TABLAS MARKDOWN con este formato:
+- SIEMPRE que tengas datos de múltiples registros preséntalos en TABLA MARKDOWN:
   | Columna 1 | Columna 2 | Columna 3 |
   |-----------|-----------|-----------|
   | dato1     | dato2     | dato3     |
+- NUNCA respondas con JSON crudo, arrays, objetos o código de ningún tipo
+- NUNCA uses { } [ ] para presentar datos — usa solo tablas markdown
+- NUNCA generes bloques %%EXCEL%% dentro del texto visible — solo al final si se pide
 - Usa **negritas** para destacar datos importantes
 - Usa ## para títulos de secciones
-- NUNCA respondas con JSON crudo o código
-- NUNCA uses caracteres de bloque ni codigo para gráficas — TOTALMENTE PROHIBIDO
-- NUNCA hagas representaciones de barras con texto
-- Las gráficas las genera el sistema automáticamente — tú solo pon tablas markdown
+- Las gráficas las genera el sistema automáticamente de las tablas — no las hagas tú
 
 CUANDO EL USUARIO PIDA UN EXCEL, REPORTE O DOCUMENTO DESCARGABLE:
 Responde primero con el análisis completo en texto y tablas markdown, luego al FINAL agrega el bloque %%EXCEL%% con esta estructura profesional:
@@ -1463,7 +1484,7 @@ NUNCA menciones Claude ni Anthropic. Eres AVIVA, creada para Grupo Vivatex S.A. 
   const response = await fetch('/api/chat', {
     method:'POST',
     headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({messages:history, system:systemPrompt})
+    body: JSON.stringify({messages:history, system:systemPrompt, username: currentUser?.username || ''})
   });
   if(!response.ok) throw new Error('API error');
   const data = await response.json();
