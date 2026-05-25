@@ -388,7 +388,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;background
     <input class="login-input" type="text" id="loginUser" placeholder="Ingresa tu usuario" autocomplete="username">
     <label class="login-label" for="loginPass">Contraseña</label>
     <input class="login-input" type="password" id="loginPass" placeholder="••••••••••" autocomplete="current-password">
-    <button class="login-btn" onclick="doLogin()">Iniciar sesión</button>
+    <button class="login-btn" id="loginBtn">Iniciar sesión</button>
     <div class="login-footer">Sistema de uso exclusivo · Grupo Vivatex S.A. de C.V.</div>
   </div>
 </div>
@@ -822,6 +822,7 @@ function doLogin(){
 
 document.getElementById('loginPass').addEventListener('keydown', e=>{if(e.key==='Enter') doLogin();});
 document.getElementById('loginUser').addEventListener('keydown', e=>{if(e.key==='Enter') document.getElementById('loginPass').focus();});
+document.getElementById('loginBtn').addEventListener('click', function(e){ e.preventDefault(); doLogin(); });
 
 function doLogout(){
   logActivity(`Cierre de sesión: ${currentUser?.username}`);
