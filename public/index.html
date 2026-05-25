@@ -903,47 +903,46 @@ function renderHistory(){
 }
 
 function cleanASCIICharts(text) {
-  // Eliminar secciones completas de gráficas ASCII
-  // Patrón: bloque que empieza con título de gráfica y contiene barras
+  // 1. Eliminar bloques de código ``` que contengan barras ASCII
+  text = text.replace(/```[\s\S]*?```/g, (block) => {
+    // Si el bloque contiene barras ASCII o patrones de gráfica, eliminarlo completamente
+    if (/[█▓░]/.test(block) || /\|{3,}/.test(block)) return '';
+    // Si parece una gráfica de texto (NOMBRE ===+ VALOR), eliminarlo
+    if (/[A-Z].{2,}\s+[█=\-|]{3,}/.test(block)) return '';
+    return block;
+  });
+
+  // 2. Eliminar línea por línea todo lo que parezca barra ASCII
   const lines = text.split('\n');
-  const cleaned = [];
-  let inASCIIBlock = false;
-  let skipCount = 0;
+  const result = [];
+  let skipNext = 0;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
 
-    // Detectar inicio de bloque ASCII (línea con muchos █ ▓ ░)
-    const hasBlockChars = /[█▓░]{2,}/.test(line);
-    // Detectar barras de progreso tipo ████████ 14.3%
-    const isProgressBar = /[█▓░\-=]{3,}.*\d+[%$]/.test(line) || /\d+[%$].*[█▓░\-=]{3,}/.test(line);
-    // Detectar escala numérica al final de gráfica: "0% 5% 10% 15%"  
-    const isScale = /^[\s\d%|+\-]+$/.test(line) && line.includes('%') && line.length > 5;
-    // Detectar línea de separador de gráfica: ====== o ------
-    const isSeparator = /^[=\-─]{5,}$/.test(line.trim());
-    // Detectar línea de eje: |█ o ├─
-    const isAxis = /^[\s]*[│|├└─]/.test(line);
+    // Saltar líneas marcadas
+    if (skipNext > 0) { skipNext--; continue; }
 
-    if (hasBlockChars || isProgressBar || isAxis) {
-      inASCIIBlock = true;
-      skipCount = 3; // saltar también líneas siguientes (escala, etiquetas)
-      continue;
-    }
+    // Detectar cualquier línea con caracteres de barra
+    if (/[█▓░]/.test(line)) { skipNext = 1; continue; }
 
-    if (inASCIIBlock && (isScale || isSeparator || skipCount > 0)) {
-      skipCount = Math.max(0, skipCount - 1);
-      if (line.trim() === '' && skipCount <= 0) inASCIIBlock = false;
-      continue;
-    }
+    // Detectar patrón: TEXTO [espacios] BARRAS [espacios] VALOR
+    if (/^.{2,40}\s{1,5}[█=\-|]{3,}/.test(line)) { skipNext = 1; continue; }
 
-    inASCIIBlock = false;
-    cleaned.push(line);
+    // Detectar líneas de escala: "0% 5% 10% 15% 20%"
+    if (/^\s*(\d+%\s+){2,}\d+%\s*$/.test(line)) continue;
+
+    // Detectar separadores de gráfica
+    if (/^[=\-─]{5,}$/.test(line.trim())) continue;
+
+    // Detectar líneas tipo eje: "|" al inicio
+    if (/^\s*[│|]/.test(line) && line.length > 3) continue;
+
+    result.push(line);
   }
 
-  // Limpieza final: remover líneas vacías triples
-  return cleaned.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  return result.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
-
 // Contador global para IDs únicos de gráficas
 let chartIdCounter = 0;
 const chartInstances = {};
@@ -1370,8 +1369,9 @@ FORMATO DE RESPUESTA:
 - Usa **negritas** para destacar datos importantes
 - Usa ## para títulos de secciones
 - NUNCA respondas con JSON crudo o código
-- NUNCA hagas gráficas con caracteres █ o barras de texto ASCII — están prohibidas
-- Cuando presentes datos en tabla, el sistema genera las gráficas automáticamente
+- NUNCA uses caracteres █ ▓ ░ ni bloques ``` para gráficas — TOTALMENTE PROHIBIDO
+- NUNCA hagas representaciones de barras con texto
+- Las gráficas las genera el sistema automáticamente — tú solo pon tablas markdown
 
 CUANDO EL USUARIO PIDA UN EXCEL, REPORTE O DOCUMENTO DESCARGABLE:
 Responde primero con el análisis completo en texto y tablas markdown, luego al FINAL agrega el bloque %%EXCEL%% con esta estructura profesional:
