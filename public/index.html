@@ -1449,8 +1449,7 @@ function detectAndSaveMemory(userMsg, avivReply) {
 function speakText(text){
   if(!synth) return;
   synth.cancel();
-  const clean = text.replace(/[*#_`|]/g,'').replace(/
-/g,' ').replace(/\s+/g,' ').substring(0, 600);
+  const clean = text.replace(/[*#_`|]/g,'').replace(/[\n\r]/g,' ').replace(/\s+/g,' ').substring(0, 600);
   if(!clean.trim()) return;
   
   const utterance = new SpeechSynthesisUtterance(clean);
