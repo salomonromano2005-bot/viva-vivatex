@@ -1088,32 +1088,44 @@ function formatMsg(text){
         return isNaN(n) ? null : n;
       };
       const numColIdx = headers.findIndex((h,i) => i>0 && parsedRows.some(r => parseNum(r[i]) !== null));
-      // Usar columna de texto más descriptiva como etiqueta (no la primera si es número)
+      // Encontrar columna de etiqueta (primera con valores de texto)
       const labelColIdx = (() => {
         for(let i=0; i<headers.length; i++){
           const vals = parsedRows.map(r => r[i]||'');
-          const hasText = vals.some(v => isNaN(parseFloat(v.replace(/[$,% ]/g,''))));
+          const hasText = vals.some(v => parseNum(v) === null);
           if(hasText) return i;
         }
         return 0;
       })();
-      if(numColIdx > 0 && parsedRows.length >= 2){
-        const labels = parsedRows.map(r => r[labelColIdx] || '');
-        // Encontrar todas las columnas numéricas
-        const numCols = headers.map((h,i) => {
-          if(i===0) return null;
-          const vals = parsedRows.map(r => parseNum(r[i]) || 0);
-          const hasNums = vals.some(v => v !== 0);
-          return hasNums ? {label: h, data: vals} : null;
-        }).filter(Boolean);
 
-        if(numCols.length > 0){
+      // Encontrar columnas numéricas (excluir la de etiqueta y columnas tipo ranking/posicion)
+      const numCols = headers.map((h,i) => {
+        if(i === labelColIdx) return null;
+        // Saltar columnas de ranking/posicion (solo contienen 1,2,3,4...)
+        const vals = parsedRows.map(r => parseNum(r[i]));
+        const realVals = vals.filter(v => v !== null);
+        if(realVals.length === 0) return null;
+        // Si todos los valores son enteros pequeños (1-20), probablemente es ranking
+        const isRanking = realVals.every(v => v === Math.floor(v) && v >= 1 && v <= 50) && realVals.length === parsedRows.length;
+        const maxVal = Math.max(...realVals);
+        // Si el max es muy pequeño comparado con otros, podría ser días/porcentaje
+        if(isRanking && maxVal <= 20) return null;
+        const hasNums = realVals.some(v => v !== 0);
+        return hasNums ? {label: h, data: vals.map(v => v || 0)} : null;
+      }).filter(Boolean);
+
+      if(numCols.length > 0 && parsedRows.length >= 2){
+        const labels = parsedRows.map(r => r[labelColIdx] || '');
+        // Tomar solo las primeras 2 columnas numéricas para no sobrecargar la gráfica
+        const chartCols = numCols.slice(0,2);
+
+        if(chartCols.length > 0){
           const id = 'chart_' + (++chartIdCounter);
           const chartData = {
-            title: headers[0] + ' — ' + numCols.map(c=>c.label).join(', '),
+            title: headers[labelColIdx] + ' — ' + chartCols.map(c=>c.label).join(', '),
             type: 'bar',
             labels: labels,
-            datasets: numCols
+            datasets: chartCols
           };
           window._chartDataStore[id] = chartData;
           setTimeout(()=>renderChart(chartData, id), 120);
