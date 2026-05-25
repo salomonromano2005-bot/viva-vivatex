@@ -903,12 +903,11 @@ function renderHistory(){
 }
 
 function cleanASCIICharts(text) {
-  // 1. Eliminar bloques de código ``` que contengan barras ASCII
-  text = text.replace(/```[\s\S]*?```/g, (block) => {
-    // Si el bloque contiene barras ASCII o patrones de gráfica, eliminarlo completamente
-    if (/[█▓░]/.test(block) || /\|{3,}/.test(block)) return '';
-    // Si parece una gráfica de texto (NOMBRE ===+ VALOR), eliminarlo
-    if (/[A-Z].{2,}\s+[█=\-|]{3,}/.test(block)) return '';
+  // 1. Eliminar bloques de codigo que contengan barras ASCII
+  const tripleBacktick = String.fromCharCode(96,96,96);
+  const reBlock = new RegExp(tripleBacktick + '[\\s\\S]*?' + tripleBacktick, 'g');
+  text = text.replace(reBlock, (block) => {
+    if (/[█▓░]/.test(block) || /[A-Z].{2,}\s+[█=\-|]{3,}/.test(block)) return '';
     return block;
   });
 
