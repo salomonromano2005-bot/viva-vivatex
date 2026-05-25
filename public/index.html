@@ -388,7 +388,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;background
     <input class="login-input" type="text" id="loginUser" placeholder="Ingresa tu usuario" autocomplete="username">
     <label class="login-label" for="loginPass">Contraseña</label>
     <input class="login-input" type="password" id="loginPass" placeholder="••••••••••" autocomplete="current-password">
-    <button class="login-btn" id="loginBtn">Iniciar sesión</button>
+    <button class="login-btn" id="loginBtn" type="button">Iniciar sesión</button>
     <div class="login-footer">Sistema de uso exclusivo · Grupo Vivatex S.A. de C.V.</div>
   </div>
 </div>
@@ -778,46 +778,64 @@ async function newChat(){
 
 // ===== AUTH =====
 function doLogin(){
-  const u = document.getElementById('loginUser').value.trim().toUpperCase();
-  const p = document.getElementById('loginPass').value;
-  const err = document.getElementById('loginErr');
-  const found = USERS.find(x => x.username.toUpperCase()===u && x.password===p && x.active);
-  if(!found){
-    // Debug: mostrar qué usuario encontró
-    const foundUser = USERS.find(x => x.username.toUpperCase()===u);
-    if(foundUser && foundUser.password !== p){
-      err.textContent = 'Contraseña incorrecta';
-    } else if(!foundUser){
-      err.textContent = 'Usuario no encontrado';
-    } else {
-      err.textContent = 'Usuario inactivo';
+  try {
+    var uEl = document.getElementById('loginUser');
+    var pEl = document.getElementById('loginPass');
+    var err = document.getElementById('loginErr');
+    if(!uEl || !pEl){ alert('Error: campos no encontrados'); return; }
+    var u = uEl.value.trim().toUpperCase();
+    var p = pEl.value.trim();
+    if(!u || !p){ 
+      err.textContent = 'Ingresa usuario y contraseña';
+      err.style.display='block';
+      setTimeout(function(){ err.style.display='none'; }, 3000);
+      return; 
     }
-    err.style.display='block';
-    setTimeout(()=>{ err.style.display='none'; err.textContent='Usuario o contraseña incorrectos'; },4000);
-    return;
+    var found = null;
+    for(var i=0; i<USERS.length; i++){
+      if(USERS[i].username.toUpperCase()===u && USERS[i].password===p && USERS[i].active){
+        found = USERS[i];
+        break;
+      }
+    }
+    if(!found){
+      var foundUser = null;
+      for(var i=0; i<USERS.length; i++){
+        if(USERS[i].username.toUpperCase()===u){ foundUser = USERS[i]; break; }
+      }
+      if(foundUser && foundUser.password !== p){
+        err.textContent = 'Contraseña incorrecta';
+      } else if(!foundUser){
+        err.textContent = 'Usuario no encontrado: ' + u;
+      } else {
+        err.textContent = 'Usuario inactivo';
+      }
+      err.style.display='block';
+      setTimeout(function(){ err.style.display='none'; err.textContent='Usuario o contraseña incorrectos'; }, 4000);
+      return;
+    }
+    err.style.display='none';
+    currentUser = found;
+    currentConvId = null;
+    conversations = {};
+    pendingFiles = [];
+    try { logActivity('Inicio de sesión: ' + found.username); } catch(e){}
+    document.getElementById('sidebarUser').textContent = found.username;
+    document.getElementById('sidebarRole').textContent = found.role==='admin'?'Administrador de Sistemas':'Usuario';
+    if(found.role==='admin') document.getElementById('navAdmin').style.display='flex';
+    document.getElementById('loginScreen').style.display='none';
+    document.getElementById('appScreen').classList.add('active');
+    try { renderHistory(); } catch(e){ console.warn(e); }
+    try { showChat(); } catch(e){ console.warn(e); }
+    try { startNewConversation(); } catch(e){ console.warn(e); }
+    loadUserConversations().then(function(){ 
+      try { renderHistory(); } catch(e){} 
+    }).catch(function(){ 
+      console.warn('Sin historial DB'); 
+    });
+  } catch(ex) {
+    alert('Error en login: ' + ex.message);
   }
-  err.style.display='none';
-  currentUser = found;
-  currentConvId = null;
-  conversations = {};
-  pendingFiles = [];
-  logActivity(`Inicio de sesión: ${found.username}`);
-  document.getElementById('sidebarUser').textContent = found.username;
-  document.getElementById('sidebarRole').textContent = found.role==='admin'?'Administrador de Sistemas':'Usuario';
-  if(found.role==='admin') document.getElementById('navAdmin').style.display='flex';
-  document.getElementById('loginScreen').style.display='none';
-  document.getElementById('appScreen').classList.add('active');
-  
-  try { renderHistory(); } catch(e){ console.warn('renderHistory error:', e); }
-  try { showChat(); } catch(e){ console.warn('showChat error:', e); }
-  try { startNewConversation(); } catch(e){ console.warn('startNewConversation error:', e); }
-  
-  // Cargar conversaciones desde DB en segundo plano
-  loadUserConversations().then(() => {
-    try { renderHistory(); } catch(e){}
-  }).catch(() => {
-    console.warn('No se pudo cargar historial, continuando sin él');
-  });
 }
 
 document.getElementById('loginPass').addEventListener('keydown', e=>{if(e.key==='Enter') doLogin();});
