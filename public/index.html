@@ -1260,14 +1260,21 @@ FORMATO DE RESPUESTA:
   | dato1     | dato2     | dato3     |
 - Usa **negritas** para destacar datos importantes
 - Usa ## para títulos de secciones
-- NUNCA respondas con JSON crudo o código — siempre texto y tablas legibles
+- NUNCA respondas con JSON crudo o código — EXCEPCIÓN: los bloques %%CHART%% y %%EXCEL%% sí debes incluirlos exactamente como se indica abajo
+- NUNCA hagas gráficas con caracteres de texto como █ o barras ASCII — usa SIEMPRE el bloque %%CHART%%
 
-CUANDO EL USUARIO PIDA UNA GRÁFICA O VISUALIZACIÓN:
-Incluye el bloque %%CHART%% con los datos. Ponlo DESPUÉS de la tabla con los mismos datos. Ejemplo:
+GRÁFICAS — OBLIGATORIO cuando el usuario pida una gráfica o comparación visual:
+Debes responder con el bloque %%CHART%% exactamente así (sin espacios extra, sin modificar el formato):
 %%CHART%%{"title":"Ventas por Mes","type":"bar","labels":["Ene","Feb","Mar","Abr"],"datasets":[{"label":"Ventas MXN","data":[320000,450000,380000,510000]}]}%%CHART%%
-Tipos: bar (barras), line (línea), pie (pastel), doughnut (dona), polarArea (polar), radar.
-Puedes poner múltiples datasets. Usa valores numéricos sin símbolos de moneda dentro del JSON.
-Siempre que presentes datos con comparaciones o tendencias, incluye una gráfica.
+
+TIPOS DISPONIBLES: bar, line, pie, doughnut, polarArea, radar
+REGLAS DEL JSON dentro de %%CHART%%:
+- "labels": array de strings con las categorías
+- "datasets": array de objetos con "label" (string) y "data" (array de números SIN $ ni comas ni texto)
+- Los números deben ser enteros o decimales puros: 320000 NO "$320,000"
+- Puedes incluir múltiples objetos en datasets para comparar series
+
+SIEMPRE incluye la gráfica %%CHART%% cuando presentes datos comparativos, rankings o tendencias.
 
 CUANDO EL USUARIO PIDA EXPLÍCITAMENTE UN EXCEL O REPORTE DESCARGABLE:
 Responde primero con el análisis en texto y tablas, luego al final agrega exactamente esto:
