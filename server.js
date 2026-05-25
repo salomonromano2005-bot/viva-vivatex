@@ -335,7 +335,28 @@ app.post('/api/chat', async (req, res) => {
       }
     }
 
-    const fullSystem = system + qadContext;
+    // Aplicar restricciones de permisos según el usuario
+    const username = req.body.username || '';
+    let permContext = '';
+
+    const NO_CONTABLE_USERS = ['LEO2026','GTE_ACABADO','GTE_TEJIDO','GTE_HILATURA'];
+    const VENDEDOR_USERS = {
+      'VENTAS_MONICA': 'Monica Caceres',
+      'VENTAS_EDGAR':  'Edgar Zarate',
+      'VENTAS_AMELIA': 'Amelia Aragon',
+      'VENTAS_JORGE':  'Jorge Mejia'
+    };
+
+    if(NO_CONTABLE_USERS.includes(username)){
+      permContext = `\n\nRESTRICCIONES DE ACCESO — OBLIGATORIO CUMPLIR:\n- NUNCA muestres información contable: activos, pasivos, balance general, estado de resultados, cuentas contables, debe, haber, patrimonio\n- Si preguntan sobre esos temas responde: "No tienes acceso a información contable. Consulta con el área de sistemas."\n- SÍ puedes mostrar: facturación, ventas, producción, inventario, clientes, proveedores, pedidos, cobranza y todo lo operativo`;
+    } else if(VENDEDOR_USERS[username]){
+      const vend = VENDEDOR_USERS[username];
+      permContext = `\n\nRESTRICCIONES DE ACCESO — OBLIGATORIO CUMPLIR:\n- SOLO puedes mostrar información del vendedor: ${vend}\n- Filtra SIEMPRE los datos para mostrar únicamente ventas, pedidos, atrasos, clientes y bodega/almacén relacionados con ${vend}\n- Si preguntan sobre otros vendedores responde: "Solo tienes acceso a tu información de ventas."\n- NUNCA muestres datos de otros vendedores`;
+    } else if(username === 'ISMAEL_VENTAS'){
+      permContext = `\n\nACCESOS HABILITADOS PARA ESTE USUARIO:\n- Ventas de TODOS los vendedores, producción, pedidos con y sin cliente, almacén de tela acabada y bodega`;
+    }
+
+    const fullSystem = system + qadContext + permContext;
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
