@@ -414,9 +414,24 @@ app.post('/api/chat', async (req, res) => {
         const isRelevant = isGeneral || true; // Incluir todas las hojas disponibles siempre
 
         if (isRelevant) {
-          // Limitar a 30 filas por hoja para no exceder el límite de tokens
-          const sample = Array.isArray(c.data) ? c.data.slice(0, 30) : c.data;
-          const text = `\n### ${c.filename} — Hoja: ${c.sheet} (${Array.isArray(c.data) ? c.data.length : '?'} registros totales, mostrando primeros 30)\n${JSON.stringify(sample, null, 1)}`;
+          let sample;
+          if (Array.isArray(c.data) && c.data.length > 0) {
+            // Buscar filas que contengan palabras clave del mensaje
+            const words = lastMsg.split(/\s+/).filter(w => w.length > 3);
+            const matching = c.data.filter(row => {
+              const rowStr = JSON.stringify(row).toLowerCase();
+              return words.some(w => rowStr.includes(w));
+            });
+            if (matching.length > 0) {
+              // Si encontró coincidencias, usar esas + primeras 10
+              sample = [...new Set([...matching.slice(0, 50), ...c.data.slice(0, 10)])].slice(0, 60);
+            } else {
+              sample = c.data.slice(0, 30);
+            }
+          } else {
+            sample = c.data;
+          }
+          const text = `\n### ${c.filename} — Hoja: ${c.sheet} (${Array.isArray(c.data) ? c.data.length : '?'} registros totales)\n${JSON.stringify(sample, null, 1)}`;
           relevantData.push(text);
         }
       });
