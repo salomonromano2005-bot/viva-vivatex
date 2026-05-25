@@ -1346,19 +1346,26 @@ async function sendMessage(){
         lastExcelData = excelJson;
         displayReply = reply.replace(/%%EXCEL%%[\s\S]*?%%EXCEL%%/, '').trim();
         setTimeout(() => showExcelReady(excelJson.titulo || 'Reporte'), 500);
-      } else {
-        // Fallback: detectar JSON viejo
-        const jsonMatch = reply.match(/\{[\s\S]*?"texto"\s*:[\s\S]*?"excel"[\s\S]*?\}/);
-        if(jsonMatch){
-          const parsed = JSON.parse(jsonMatch[0]);
-          if(parsed.texto && parsed.excel){
-            lastExcelData = parsed.excel;
-            displayReply = parsed.texto;
-            setTimeout(() => showExcelReady(parsed.excel.titulo || 'Reporte'), 500);
-          }
-        }
       }
-    } catch(e){ displayReply = reply; }
+    } catch(e){}
+
+    // Limpiar cualquier JSON crudo que la IA haya generado sin marcadores
+    try {
+      // Detectar bloques JSON grandes con "hojas", "columnas", "filas" — son datos Excel crudos
+      displayReply = displayReply.replace(/\{[\s\S]*?"hojas"[\s\S]*?"columnas"[\s\S]*?\}/g, '');
+      displayReply = displayReply.replace(/\{[\s\S]*?"filas"[\s\S]*?"columnas"[\s\S]*?\}/g, '');
+      displayReply = displayReply.replace(/\{[\s\S]*?"titulo"[\s\S]*?"hojas"[\s\S]*?\}/g, '');
+      // Limpiar líneas que sean solo JSON residual
+      displayReply = displayReply.split('\n').filter(line => {
+        const t = line.trim();
+        if(!t) return true;
+        // Eliminar líneas que parecen JSON: empiezan con { [ " y contienen :
+        if((t.startsWith('{') || t.startsWith('[') || t.startsWith('"')) && t.includes(':')) return false;
+        if(t === '},' || t === '}' || t === '],' || t === ']') return false;
+        if(/^"[a-z_]+":\s/.test(t)) return false; // "key": value
+        return true;
+      }).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+    } catch(e){}
 
     // Limpiar gráficas ASCII antes de guardar y mostrar
     displayReply = cleanASCIICharts(displayReply);
