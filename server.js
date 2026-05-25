@@ -388,16 +388,13 @@ app.post('/api/chat', async (req, res) => {
 
       keys.forEach(key => {
         const c = cache[key];
-        const isRelevant =
-          (lastMsg.includes('venta') && (key.includes('venta') || key.includes('sale'))) ||
-          (lastMsg.includes('inventario') && (key.includes('inventario') || key.includes('stock'))) ||
-          (lastMsg.includes('cliente') && (key.includes('cliente') || key.includes('customer'))) ||
-          (lastMsg.includes('compra') && (key.includes('compra') || key.includes('purchase'))) ||
-          (lastMsg.includes('proveedor') && (key.includes('proveedor') || key.includes('supplier'))) ||
-          (lastMsg.includes('financiero') || lastMsg.includes('finanza') || lastMsg.includes('balance')) ||
-          (lastMsg.includes('orden') && (key.includes('orden') || key.includes('order'))) ||
-          lastMsg.includes('todo') || lastMsg.includes('resumen') || lastMsg.includes('reporte') ||
-          lastMsg.includes('excel') || lastMsg.includes('tabla');
+        // Relevancia ampliada — incluir todas las hojas si la pregunta es general
+        const isGeneral = lastMsg.includes('todo') || lastMsg.includes('resumen') || 
+          lastMsg.includes('reporte') || lastMsg.includes('excel') || lastMsg.includes('tabla') ||
+          lastMsg.includes('dame') || lastMsg.includes('muestra') || lastMsg.includes('lista') ||
+          lastMsg.includes('cuanto') || lastMsg.includes('cuál') || lastMsg.includes('cual') ||
+          lastMsg.includes('top') || lastMsg.includes('mejor') || lastMsg.includes('mayor');
+        const isRelevant = isGeneral || true; // Incluir todas las hojas disponibles siempre
 
         if (isRelevant) {
           // Limitar a 30 filas por hoja para no exceder el límite de tokens
