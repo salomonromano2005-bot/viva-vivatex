@@ -1008,15 +1008,49 @@ function formatMsg(text){
     } catch(e){ return ''; }
   });
 
-  // Renderizar tablas markdown | col | col |
+  // Renderizar tablas markdown | col | col | + auto-generar gráfica
   text = text.replace(/\|(.+)\|\n\|[-| :]+\|\n((?:\|.+\|\n?)*)/g, (match, header, rows) => {
     const headers = header.split('|').map(h=>h.trim()).filter(Boolean);
     const headerHTML = '<tr>' + headers.map(h=>`<th>${escHtml(h)}</th>`).join('') + '</tr>';
-    const rowsHTML = rows.trim().split('\n').map(row => {
-      const cells = row.split('|').map(c=>c.trim()).filter(Boolean);
-      return '<tr>' + cells.map(c=>`<td>${escHtml(c)}</td>`).join('') + '</tr>';
-    }).join('');
-    return `<div style="overflow-x:auto;margin:10px 0"><table>${headerHTML}${rowsHTML}</table></div>`;
+    const parsedRows = rows.trim().split('\n').map(row =>
+      row.split('|').map(c=>c.trim()).filter(Boolean)
+    );
+    const rowsHTML = parsedRows.map(cells =>
+      '<tr>' + cells.map(c=>`<td>${escHtml(c)}</td>`).join('') + '</tr>'
+    ).join('');
+    const tableHTML = `<div style="overflow-x:auto;margin:10px 0"><table>${headerHTML}${rowsHTML}</table></div>`;
+
+    // Auto-generar gráfica si hay al menos 2 columnas y 2+ filas con números
+    try {
+      const numColIdx = headers.findIndex((h,i) => i>0 && parsedRows.some(r => {
+        const v = (r[i]||'').replace(/[$,% ]/g,'');
+        return !isNaN(parseFloat(v)) && v !== '';
+      }));
+      if(numColIdx > 0 && parsedRows.length >= 2){
+        const labels = parsedRows.map(r => r[0] || '');
+        // Encontrar todas las columnas numéricas
+        const numCols = headers.map((h,i) => {
+          if(i===0) return null;
+          const vals = parsedRows.map(r => parseFloat((r[i]||'').replace(/[$,% ]/g,'')) || 0);
+          const hasNums = vals.some(v => v !== 0);
+          return hasNums ? {label: h, data: vals} : null;
+        }).filter(Boolean);
+
+        if(numCols.length > 0){
+          const id = 'chart_' + (++chartIdCounter);
+          const chartData = {
+            title: headers[0] + ' — ' + numCols.map(c=>c.label).join(', '),
+            type: 'bar',
+            labels: labels,
+            datasets: numCols
+          };
+          window._chartDataStore[id] = chartData;
+          setTimeout(()=>renderChart(chartData, id), 120);
+          return tableHTML + buildChartHTML(chartData, id);
+        }
+      }
+    } catch(e){}
+    return tableHTML;
   });
 
   // Encabezados ##
@@ -1260,21 +1294,9 @@ FORMATO DE RESPUESTA:
   | dato1     | dato2     | dato3     |
 - Usa **negritas** para destacar datos importantes
 - Usa ## para títulos de secciones
-- NUNCA respondas con JSON crudo o código — EXCEPCIÓN: los bloques %%CHART%% y %%EXCEL%% sí debes incluirlos exactamente como se indica abajo
-- NUNCA hagas gráficas con caracteres de texto como █ o barras ASCII — usa SIEMPRE el bloque %%CHART%%
-
-GRÁFICAS — OBLIGATORIO cuando el usuario pida una gráfica o comparación visual:
-Debes responder con el bloque %%CHART%% exactamente así (sin espacios extra, sin modificar el formato):
-%%CHART%%{"title":"Ventas por Mes","type":"bar","labels":["Ene","Feb","Mar","Abr"],"datasets":[{"label":"Ventas MXN","data":[320000,450000,380000,510000]}]}%%CHART%%
-
-TIPOS DISPONIBLES: bar, line, pie, doughnut, polarArea, radar
-REGLAS DEL JSON dentro de %%CHART%%:
-- "labels": array de strings con las categorías
-- "datasets": array de objetos con "label" (string) y "data" (array de números SIN $ ni comas ni texto)
-- Los números deben ser enteros o decimales puros: 320000 NO "$320,000"
-- Puedes incluir múltiples objetos en datasets para comparar series
-
-SIEMPRE incluye la gráfica %%CHART%% cuando presentes datos comparativos, rankings o tendencias.
+- NUNCA respondas con JSON crudo o código
+- NUNCA hagas gráficas con caracteres █ o barras de texto ASCII — están prohibidas
+- Cuando presentes datos en tabla, el sistema genera las gráficas automáticamente
 
 CUANDO EL USUARIO PIDA EXPLÍCITAMENTE UN EXCEL O REPORTE DESCARGABLE:
 Responde primero con el análisis en texto y tablas, luego al final agrega exactamente esto:
