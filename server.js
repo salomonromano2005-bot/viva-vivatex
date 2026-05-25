@@ -93,10 +93,12 @@ app.post('/api/login', async (req, res) => {
   if(!username || !password) return res.status(400).json({ error: 'Faltan datos' });
   try {
     if(pool){
+      console.log(`Login attempt: user="${username.toUpperCase()}" pass="${password}"`);
       const result = await pool.query(
         'SELECT id, username, role, active FROM usuarios WHERE UPPER(username)=$1 AND password=$2',
         [username.toUpperCase(), password]
       );
+      console.log(`Login result: ${result.rows.length} rows found`);
       if(result.rows.length === 0) return res.json({ ok: false, error: 'Usuario o contraseña incorrectos' });
       const user = result.rows[0];
       if(!user.active) return res.json({ ok: false, error: 'Usuario inactivo' });
