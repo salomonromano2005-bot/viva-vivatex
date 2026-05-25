@@ -986,6 +986,23 @@ function switchChartType(id, type, btn){
 window._chartDataStore = {};
 
 function formatMsg(text){
+  // Eliminar bloques de gráficas ASCII (barras de texto con █ ▓ ░ o guiones)
+  // Eliminar líneas que contengan múltiples █ o patrones de barra ASCII
+  text = text.replace(/^.*█+.*$/gm, '');
+  text = text.replace(/^.*▓+.*$/gm, '');
+  text = text.replace(/^.*░+.*$/gm, '');
+  // Eliminar líneas de escala como "0% 5% 10% 15% 20%"
+  text = text.replace(/^(\s*\d+%\s+){2,}.*$/gm, '');
+  // Eliminar líneas con patrón de barra: TEXTO ===+ o TEXTO ---+
+  text = text.replace(/^.{3,}\s[=─—]{4,}.*$/gm, '');
+  // Eliminar bloques de código que contengan gráficas ASCII (entre ```)
+  text = text.replace(/```[\s\S]*?```/g, (block) => {
+    if(block.includes('█') || block.includes('▓') || block.includes('░')) return '';
+    return block;
+  });
+  // Limpiar líneas vacías múltiples
+  text = text.replace(/\n{3,}/g, '\n\n');
+
   // Si es JSON con estructura excel, extraer solo el texto
   try {
     const jsonMatch = text.match(/\{[\s\S]*"texto"\s*:[\s\S]*\}/);
