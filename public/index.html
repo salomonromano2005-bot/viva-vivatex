@@ -800,93 +800,67 @@ async function newChat(){
 
 // ===== AUTH =====
 async function doLogin(){
-  try {
-    var uEl = document.getElementById('loginUser');
-    var pEl = document.getElementById('loginPass');
-    var err = document.getElementById('loginErr');
-    var btn = document.getElementById('loginBtn');
-    if(!uEl || !pEl){ alert('Error: campos no encontrados'); return; }
-    var u = uEl.value.trim().toUpperCase();
-    var p = pEl.value.trim();
-    if(!u || !p){ 
-      err.textContent = 'Ingresa usuario y contraseña';
-      err.style.display='block';
-      setTimeout(function(){ err.style.display='none'; }, 3000);
-      return; 
-    }
-    // Deshabilitar botón mientras valida
-    if(btn) btn.disabled = true;
-    err.style.display='none';
+  var u = document.getElementById('loginUser').value.trim().toUpperCase();
+  var p = document.getElementById('loginPass').value.trim();
+  var err = document.getElementById('loginErr');
 
-    // 1. Intentar login contra PostgreSQL
-    var found = null;
-    try {
-      var res = await fetch('/api/login', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({username: u, password: p})
-      });
-      var data = await res.json();
-      if(data.ok) {
-        found = data.user;
-      } else {
-        // 2. Fallback: validar contra array local
-        for(var i=0; i<USERS.length; i++){
-          if(USERS[i].username.toUpperCase()===u && USERS[i].password===p && USERS[i].active){
-            found = USERS[i]; break;
-          }
-        }
-        if(!found){
-          err.textContent = data.error || 'Usuario o contraseña incorrectos';
-          err.style.display='block';
-          setTimeout(function(){ err.style.display='none'; }, 4000);
-          if(btn) btn.disabled = false;
-          return;
-        }
-      }
-    } catch(fetchErr){
-      // Sin conexión: fallback local
-      for(var i=0; i<USERS.length; i++){
-        if(USERS[i].username.toUpperCase()===u && USERS[i].password===p && USERS[i].active){
-          found = USERS[i]; break;
-        }
-      }
-      if(!found){
-        err.textContent = 'Error de conexión. Intenta de nuevo.';
-        err.style.display='block';
-        setTimeout(function(){ err.style.display='none'; }, 4000);
-        if(btn) btn.disabled = false;
-        return;
-      }
-    }
-
-    // Login exitoso
-    if(btn) btn.disabled = false;
-    currentUser = found;
-    currentConvId = null;
-    conversations = {};
-    pendingFiles = [];
-    try { logActivity('Inicio de sesión: ' + found.username); } catch(e){}
-    document.getElementById('sidebarUser').textContent = found.username;
-    document.getElementById('sidebarRole').textContent = found.role==='admin'?'Administrador de Sistemas':'Usuario';
-    if(found.role==='admin') document.getElementById('navAdmin').style.display='flex';
-    document.getElementById('loginScreen').style.display='none';
-    document.getElementById('appScreen').classList.add('active');
-    try { renderHistory(); } catch(e){ console.warn(e); }
-    try { showChat(); } catch(e){ console.warn(e); }
-    try { startNewConversation(); } catch(e){ console.warn(e); }
-    loadUserConversations().then(function(){ 
-      try { renderHistory(); } catch(e){} 
-    }).catch(function(){ 
-      console.warn('Sin historial DB'); 
-    });
-  } catch(ex) {
-    alert('Error en login: ' + ex.message);
+  if(!u || !p){
+    err.textContent = 'Ingresa usuario y contraseña';
+    err.style.display = 'block';
+    setTimeout(function(){ err.style.display='none'; }, 3000);
+    return;
   }
+
+  // Primero intentar contra PostgreSQL
+  try {
+    var res = await fetch('/api/login', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({username: u, password: p})
+    });
+    var data = await res.json();
+    if(data.ok){
+      loginSuccess(data.user);
+      return;
+    }
+  } catch(e){
+    console.warn('API login error:', e);
+  }
+
+  // Fallback: validar contra array local
+  var found = null;
+  for(var i=0; i<USERS.length; i++){
+    if(USERS[i].username.toUpperCase()===u && USERS[i].password===p && USERS[i].active){
+      found = USERS[i]; break;
+    }
+  }
+  if(found){
+    loginSuccess(found);
+    return;
+  }
+
+  err.textContent = 'Usuario o contraseña incorrectos';
+  err.style.display = 'block';
+  setTimeout(function(){ err.style.display='none'; }, 4000);
 }
 
-document.getElementById('loginPass').addEventListener('keydown', e=>{if(e.key==='Enter') doLogin();});
-document.getElementById('loginUser').addEventListener('keydown', e=>{if(e.key==='Enter') document.getElementById('loginPass').focus();});
+function loginSuccess(found){
+  currentUser = found;
+  currentConvId = null;
+  conversations = {};
+  pendingFiles = [];
+  try { logActivity('Inicio de sesión: ' + found.username); } catch(e){}
+  document.getElementById('sidebarUser').textContent = found.username;
+  document.getElementById('sidebarRole').textContent = found.role==='admin'?'Administrador de Sistemas':'Usuario';
+  if(found.role==='admin') document.getElementById('navAdmin').style.display='flex';
+  document.getElementById('loginScreen').style.display='none';
+  document.getElementById('appScreen').classList.add('active');
+  try { renderHistory(); } catch(e){}
+  try { showChat(); } catch(e){}
+  try { startNewConversation(); } catch(e){}
+  loadUserConversations().then(function(){ try { renderHistory(); } catch(e){} }).catch(function(){});
+}
+
 document.getElementById('loginBtn').addEventListener('click', function(e){ e.preventDefault(); doLogin(); });
 
 function doLogout(){
