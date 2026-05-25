@@ -318,13 +318,18 @@ app.post('/api/chat', async (req, res) => {
           lastMsg.includes('excel') || lastMsg.includes('tabla');
 
         if (isRelevant) {
-          const sample = Array.isArray(c.data) ? c.data.slice(0, 100) : c.data;
-          relevantData.push(`\n### ${c.filename} — Hoja: ${c.sheet} (${Array.isArray(c.data) ? c.data.length : '?'} registros)\n${JSON.stringify(sample, null, 2)}`);
+          // Limitar a 30 filas por hoja para no exceder el límite de tokens
+          const sample = Array.isArray(c.data) ? c.data.slice(0, 30) : c.data;
+          const text = `\n### ${c.filename} — Hoja: ${c.sheet} (${Array.isArray(c.data) ? c.data.length : '?'} registros totales, mostrando primeros 30)\n${JSON.stringify(sample, null, 1)}`;
+          relevantData.push(text);
         }
       });
 
-      if (relevantData.length > 0) {
-        qadContext = `\n\nDATOS QAD ACTUALES (${new Date(qadLastUpdate || Date.now()).toLocaleString('es-MX')}):\n${relevantData.join('\n')}`;
+      // Limitar el contexto total a máximo 3 hojas relevantes
+      const limitedData = relevantData.slice(0, 3);
+
+      if (limitedData.length > 0) {
+        qadContext = `\n\nDATOS QAD ACTUALES (${new Date(qadLastUpdate || Date.now()).toLocaleString('es-MX')}):\n${limitedData.join('\n')}`;
       } else {
         qadContext = `\n\nDatos disponibles en QAD:\n${keys.map(k => `- ${cache[k].filename} / ${cache[k].sheet}: ${Array.isArray(cache[k].data) ? cache[k].data.length : '?'} registros`).join('\n')}`;
       }
