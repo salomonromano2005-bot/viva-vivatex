@@ -193,10 +193,12 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;background
 .msg-bubble p{margin-bottom:8px;}
 .msg-bubble p:last-child{margin-bottom:0;}
 .msg-bubble strong{font-weight:600;}
-.msg-bubble table{border-collapse:collapse;width:100%;font-size:13px;margin:8px 0;}
-.msg-bubble th{background:#f0f7e8;padding:8px 12px;text-align:left;border:1px solid #d4e8c4;font-weight:600;color:#2d4a1e;}
-.msg-bubble td{padding:7px 12px;border:1px solid #e4eed8;}
-.msg-bubble tr:nth-child(even) td{background:#fafdf7;}
+.msg-bubble table{border-collapse:collapse;width:100%;font-size:13px;margin:10px 0;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.07);}
+.msg-bubble th{background:#1E6B2E;color:#fff;padding:10px 14px;text-align:left;font-weight:600;font-size:12px;letter-spacing:0.3px;}
+.msg-bubble td{padding:8px 14px;border-bottom:1px solid #e4eed8;color:#2d2d2d;font-size:13px;}
+.msg-bubble tr:nth-child(even) td{background:#f5faf3;}
+.msg-bubble tr:hover td{background:#edf7e8;}
+.msg-bubble tr:last-child td{border-bottom:none;}
 .msg-time{font-size:11px;color:#aab4a0;margin-top:6px;text-align:right;}
 .msg.user .msg-time{color:rgba(255,255,255,0.6);}
 
@@ -893,12 +895,50 @@ function renderHistory(){
 }
 
 function formatMsg(text){
-  text = escHtml(text);
-  text = text.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>');
-  text = text.replace(/\*(.*?)\*/g,'<em>$1</em>');
-  text = text.replace(/\n\n/g,'</p><p>');
+  // Si es JSON con estructura excel, extraer solo el texto
+  try {
+    const jsonMatch = text.match(/\{[\s\S]*"texto"\s*:[\s\S]*\}/);
+    if(jsonMatch){
+      const parsed = JSON.parse(jsonMatch[0]);
+      if(parsed.texto) text = parsed.texto;
+    }
+  } catch(e){}
+
+  // Renderizar tablas markdown | col | col |
+  text = text.replace(/\|(.+)\|\n\|[-| :]+\|\n((?:\|.+\|\n?)*)/g, (match, header, rows) => {
+    const headers = header.split('|').map(h=>h.trim()).filter(Boolean);
+    const headerHTML = '<tr>' + headers.map(h=>`<th>${escHtml(h)}</th>`).join('') + '</tr>';
+    const rowsHTML = rows.trim().split('\n').map(row => {
+      const cells = row.split('|').map(c=>c.trim()).filter(Boolean);
+      return '<tr>' + cells.map(c=>`<td>${escHtml(c)}</td>`).join('') + '</tr>';
+    }).join('');
+    return `<div style="overflow-x:auto;margin:10px 0"><table>${headerHTML}${rowsHTML}</table></div>`;
+  });
+
+  // Encabezados ##
+  text = text.replace(/^### (.+)$/gm, '<h4 style="color:#1E6B2E;font-size:14px;margin:10px 0 4px;font-weight:700">$1</h4>');
+  text = text.replace(/^## (.+)$/gm, '<h3 style="color:#1E6B2E;font-size:15px;margin:12px 0 5px;font-weight:700">$1</h3>');
+  text = text.replace(/^# (.+)$/gm, '<h2 style="color:#1E6B2E;font-size:16px;margin:12px 0 6px;font-weight:700">$1</h2>');
+
+  // Negritas e itálicas
+  text = text.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+  text = text.replace(/\*(.+?)\*/g,'<em>$1</em>');
+
+  // Listas con guiones o asteriscos
+  text = text.replace(/^[\-\*] (.+)$/gm, '<li style="margin:3px 0;padding-left:4px">$1</li>');
+  text = text.replace(/(<li[^>]*>.*<\/li>\n?)+/g, m => `<ul style="margin:8px 0;padding-left:20px">${m}</ul>`);
+
+  // Listas numeradas
+  text = text.replace(/^(\d+)\. (.+)$/gm, '<li style="margin:3px 0">$2</li>');
+
+  // Código inline
+  text = text.replace(/`([^`]+)`/g, '<code style="background:#f0f7e8;padding:2px 6px;border-radius:4px;font-family:monospace;font-size:13px">$1</code>');
+
+  // Párrafos
+  text = text.replace(/\n\n/g, '</p><p style="margin:6px 0">');
   text = text.replace(/\n/g,'<br>');
-  text = '<p>'+text+'</p>';
+  text = '<p style="margin:0">' + text + '</p>';
+
   return text;
 }
 
@@ -1045,14 +1085,28 @@ async function sendMessage(){
     const reply = await callAVIVA(history, qadContext);
     typingEl.remove();
     const rTime = new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
-    conversations[currentConvId].messages.push({role:'assistant',content:reply,time:rTime});
+    // Detectar si la respuesta tiene JSON con Excel
+    let displayReply = reply;
+    try {
+      const jsonMatch = reply.match(/\{[\s\S]*"texto"\s*:[\s\S]*"excel"[\s\S]*\}/);
+      if(jsonMatch){
+        const parsed = JSON.parse(jsonMatch[0]);
+        if(parsed.texto && parsed.excel){
+          lastExcelData = parsed.excel;
+          displayReply = parsed.texto;
+          setTimeout(() => showExcelReady(parsed.excel.titulo || 'Reporte'), 500);
+        }
+      }
+    } catch(e){ displayReply = reply; }
+
+    conversations[currentConvId].messages.push({role:'assistant',content:displayReply,time:rTime});
     conversations[currentConvId].updatedAt = new Date().toISOString();
     renderMessages();
     renderHistory();
-    speakText(reply);
+    speakText(displayReply);
     saveCurrentConv();
     // Detectar y guardar preferencias del usuario
-    detectAndSaveMemory(text, reply);
+    detectAndSaveMemory(text, displayReply);
   }catch(e){
     typingEl.remove();
     const errTime = new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
@@ -1159,58 +1213,57 @@ function showExcelReady(titulo){
 }
 
 // ===== EXPORT =====
-function downloadVivaExcel(){
+async function downloadVivaExcel(){
   if(!lastExcelData){ showToast('No hay datos Excel generados aún','error'); return; }
-  const wb = XLSX.utils.book_new();
-  const fecha = new Date().toLocaleDateString('es-MX');
-  const titulo = lastExcelData.titulo || 'Reporte AVIVA';
-
-  lastExcelData.hojas.forEach(hoja => {
-    const rows = [];
-    // Encabezado corporativo
-    rows.push(['GRUPO VIVATEX S.A. DE C.V.', '', '', '', '']);
-    rows.push([titulo.toUpperCase(), '', '', '', '']);
-    rows.push(['Generado por: AVIVA · Inteligencia Vivatex', '', '', '', '']);
-    rows.push(['Fecha: ' + fecha, '', '', '', '']);
-    rows.push(['Usuario: ' + (currentUser?.username || ''), '', '', '', '']);
-    rows.push(['', '', '', '', '']);
-    // Columnas
-    rows.push(hoja.columnas || []);
-    // Filas de datos
-    (hoja.filas || []).forEach(fila => rows.push(fila));
-    // Totales
-    if(hoja.totales) {
-      rows.push(['', '', '', '', '']);
-      rows.push(hoja.totales);
+  showToast('⏳ Generando Excel profesional...', 'success');
+  try {
+    const res = await fetch('/api/excel/generate', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        titulo: lastExcelData.titulo || 'Reporte AVIVA',
+        usuario: currentUser?.username || '',
+        hojas: lastExcelData.hojas
+      })
+    });
+    const data = await res.json();
+    if(data.ok && data.base64){
+      // Descargar el Excel
+      const bytes = atob(data.base64);
+      const arr = new Uint8Array(bytes.length);
+      for(let i=0; i<bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+      const blob = new Blob([arr], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = data.filename;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('✅ Excel profesional descargado', 'success');
+    } else {
+      throw new Error(data.error || 'Error generando');
     }
-
-    const ws = XLSX.utils.aoa_to_sheet(rows);
-    // Anchos de columna automáticos
-    const maxCols = Math.max(...rows.map(r => r.length));
-    ws['!cols'] = Array(maxCols).fill({wch: 22});
-    if(ws['!cols'][0]) ws['!cols'][0] = {wch: 30};
-
-    XLSX.utils.book_append_sheet(wb, ws, hoja.nombre || 'Datos');
-  });
-
-  // Hoja resumen
-  const resumenRows = [
-    ['GRUPO VIVATEX S.A. DE C.V.', ''],
-    ['RESUMEN DEL REPORTE', ''],
-    ['', ''],
-    ['Reporte:', titulo],
-    ['Fecha:', fecha],
-    ['Usuario:', currentUser?.username || ''],
-    ['Hojas generadas:', lastExcelData.hojas.length],
-    ['Sistema:', 'AVIVA · Inteligencia Vivatex'],
-  ];
-  const wsRes = XLSX.utils.aoa_to_sheet(resumenRows);
-  wsRes['!cols'] = [{wch:25},{wch:40}];
-  XLSX.utils.book_append_sheet(wb, wsRes, 'Portada');
-
-  const filename = `Vivatex_${titulo.replace(/\s+/g,'_')}_${new Date().toISOString().split('T')[0]}.xlsx`;
-  XLSX.writeFile(wb, filename);
-  showToast('✅ Excel descargado: ' + filename, 'success');
+  } catch(e) {
+    // Fallback a XLSX.js si falla el servidor
+    showToast('⚠️ Usando modo básico...', 'success');
+    const wb = XLSX.utils.book_new();
+    lastExcelData.hojas.forEach(hoja => {
+      const rows = [
+        ['GRUPO VIVATEX S.A. DE C.V.'],
+        [lastExcelData.titulo || 'Reporte'],
+        [],
+        hoja.columnas || [],
+        ...(hoja.filas || []),
+        ...(hoja.totales ? [[], hoja.totales] : [])
+      ];
+      const ws = XLSX.utils.aoa_to_sheet(rows);
+      ws['!cols'] = (hoja.columnas||[]).map(() => ({wch:20}));
+      XLSX.utils.book_append_sheet(wb, ws, (hoja.nombre||'Datos').substring(0,31));
+    });
+    const filename = `Vivatex_${new Date().toISOString().split('T')[0]}.xlsx`;
+    XLSX.writeFile(wb, filename);
+    showToast('✅ Excel descargado', 'success');
+  }
 }
 
 function exportExcel(){
