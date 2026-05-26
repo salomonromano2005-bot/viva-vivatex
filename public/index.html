@@ -562,17 +562,27 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;background
         <div class="admin-section">
           <div class="admin-section-head"><h3>📂 Subir archivos de QAD (Opción A — Cada hora)</h3></div>
           <div class="admin-section-body">
-            <p style="font-size:13px;color:#6a7060;margin-bottom:16px">Sube los reportes exportados de QAD en formato Excel o CSV. AVIVA los leerá y podrá responder preguntas con esa información.</p>
-            <div style="border:2px dashed #6BBF3E;border-radius:12px;padding:28px;text-align:center;background:#f4faf0;cursor:pointer" onclick="document.getElementById('adminFileInput').click()">
+            <p style="font-size:13px;color:#6a7060;margin-bottom:16px">Sube reportes exportados de QAD en Excel, CSV o PDF. AVIVA los leerá y responderá preguntas con esa información.</p>
+
+            <!-- Zona Excel/CSV -->
+            <div id="qadDropZone" style="border:2px dashed #6BBF3E;border-radius:12px;padding:28px;text-align:center;background:#f4faf0;cursor:pointer;transition:background 0.2s"
+              onclick="document.getElementById('adminFileInput').click()"
+              ondragover="event.preventDefault();this.style.background='#e8f5df'"
+              ondragleave="this.style.background='#f4faf0'"
+              ondrop="event.preventDefault();this.style.background='#f4faf0';handleQADDrop(event)">
               <div style="font-size:32px;margin-bottom:8px">📊</div>
               <div style="font-size:15px;font-weight:600;color:#1c2217;margin-bottom:4px">Arrastra archivos aquí o haz clic para seleccionar</div>
-              <div style="font-size:12px;color:#6a7060">Formatos: .xlsx, .xls, .csv · Múltiples archivos permitidos</div>
+              <div style="font-size:12px;color:#6a7060">Excel / CSV: .xlsx, .xls, .csv &nbsp;·&nbsp; PDF: .pdf &nbsp;·&nbsp; Múltiples archivos permitidos</div>
             </div>
+
             <input type="file" id="adminFileInput" accept=".xlsx,.xls,.csv" multiple style="display:none" onchange="uploadQADFiles(this.files)">
             <input type="file" id="adminPdfInput" accept=".pdf" multiple style="display:none" onchange="uploadQADPDFs(this.files)">
+
             <div id="qadUploadStatus" style="margin-top:12px;font-size:13px;min-height:20px"></div>
+
             <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
-              <button class="admin-save-btn" style="margin:0" onclick="document.getElementById('adminFileInput').click()">📂 Seleccionar archivos QAD</button>
+              <button class="admin-save-btn" style="margin:0" onclick="document.getElementById('adminFileInput').click()">📂 Excel / CSV</button>
+              <button class="admin-save-btn" style="margin:0;background:#c0392b" onclick="document.getElementById('adminPdfInput').click()">📄 Subir PDF</button>
               <button class="admin-save-btn" style="margin:0;background:#1c2217" onclick="clearQADData()">🗑️ Limpiar datos QAD</button>
               <button class="admin-save-btn" style="margin:0;background:#2563eb" onclick="checkQADStatus()">🔄 Ver estado actual</button>
             </div>
@@ -1272,6 +1282,20 @@ async function handleFileUpload(input) {
   input.value = '';
 }
 
+// Maneja drop en la zona QAD — separa Excel/CSV de PDF
+async function handleQADDrop(event) {
+  const files = Array.from(event.dataTransfer.files);
+  if (!files.length) return;
+  const excelFiles = files.filter(f => /\.(xlsx|xls|csv)$/i.test(f.name));
+  const pdfFiles   = files.filter(f => /\.pdf$/i.test(f.name));
+  const otherFiles = files.filter(f => !/\.(xlsx|xls|csv|pdf)$/i.test(f.name));
+  if (otherFiles.length > 0) {
+    showToast('⚠️ Formato no permitido: ' + otherFiles.map(f=>f.name).join(', '), 'error');
+  }
+  if (excelFiles.length > 0) await uploadQADFiles(excelFiles);
+  if (pdfFiles.length > 0)   await uploadQADPDFs(pdfFiles);
+}
+
 async function uploadQADFiles(files) {
   const fileList = files instanceof FileList ? Array.from(files) : files;
   const names = fileList.map(f=>f.name).join(', ');
@@ -1294,11 +1318,12 @@ async function uploadQADFiles(files) {
         appendMsg('aviva', `✅ Datos QAD cargados: ${names}\n📊 ${data.sheets} hojas procesadas. Ya puedo responder con estos datos.`);
       }
     } else {
-      showToast('❌ Error al cargar archivos QAD', 'error');
-      if(adminStatus) adminStatus.innerHTML = `<span style="color:#e53e3e">❌ Error al cargar</span>`;
+      const errMsg = data.error || 'Error desconocido';
+      showToast('❌ ' + errMsg, 'error');
+      if(adminStatus) adminStatus.innerHTML = `<span style="color:#e53e3e">❌ ${errMsg}</span>`;
     }
   } catch(e) {
-    showToast('❌ Error de conexión', 'error');
+    showToast('❌ Error de conexión: ' + e.message, 'error');
     if(adminStatus) adminStatus.innerHTML = `<span style="color:#e53e3e">❌ Error de conexión</span>`;
   }
 }
