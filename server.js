@@ -543,13 +543,30 @@ app.post('/api/chat', async (req, res) => {
           .slice(0, forceInclude ? 120 : 100);
         
         const hasMatches = matchingRows.length > 0 || forceInclude;
-        // forceInclude files get highest priority
         const score = forceInclude ? 99999 + matchingRows.length : (hasMatches ? matchingRows.length : 0);
-        
+
+        // Convertir filas a texto tabular legible para la IA (no JSON crudo)
+        function rowsToText(rows) {
+          if (!rows || rows.length === 0) return '(sin datos)';
+          const cols = Object.keys(rows[0] || {});
+          if (cols.length === 0) return '(sin columnas)';
+          const header = cols.join(' | ');
+          const divider = cols.map(() => '---').join('-|-');
+          const lines = rows.map(row =>
+            cols.map(col => {
+              const v = row[col];
+              return (v === null || v === undefined) ? '' : String(v);
+            }).join(' | ')
+          );
+          return [header, divider, ...lines].join('\n');
+        }
+
+        const tableText = rowsToText(combined);
+
         sheetResults.push({
           key, score, hasMatches,
-          text: `\n### ${c.filename} — ${c.sheet} (${c.data.length} registros totales, ${matchingRows.length} coincidencias)\n${JSON.stringify(combined, null, 1)}`,
-          textLength: 0
+          text: `\n### ${c.filename} — Hoja: ${c.sheet} (${c.data.length} registros totales)\n${tableText}`,
+          textLength: tableText.length
         });
       });
       
