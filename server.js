@@ -182,8 +182,14 @@ async function loadQADFromDB() {
     const result = await pool.query('SELECT * FROM qad_data ORDER BY updated_at DESC');
     const cache = {};
     result.rows.forEach(row => {
+      // Asegurar que data sea siempre un array
+      let data = row.data;
+      if (typeof data === 'string') {
+        try { data = JSON.parse(data); } catch(e) { data = []; }
+      }
+      if (!Array.isArray(data)) data = data ? [data] : [];
       cache[row.sheet_key] = {
-        data: row.data,
+        data: data,
         filename: row.filename,
         sheet: row.sheet_name,
         updatedAt: row.updated_at
