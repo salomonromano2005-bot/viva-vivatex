@@ -533,7 +533,8 @@ app.post('/api/chat', async (req, res) => {
           .slice(0, forceInclude ? 120 : 100);
         
         const hasMatches = matchingRows.length > 0 || forceInclude;
-        const score = forceInclude ? 1000 : (hasMatches ? matchingRows.length : 0);
+        // forceInclude files get highest priority
+        const score = forceInclude ? 99999 + matchingRows.length : (hasMatches ? matchingRows.length : 0);
         
         sheetResults.push({
           key, score, hasMatches,
@@ -542,15 +543,20 @@ app.post('/api/chat', async (req, res) => {
         });
       });
       
-      // Ordenar: primero las hojas con más coincidencias
+      // Ordenar: primero forceInclude, luego por coincidencias
       sheetResults.sort((a, b) => b.score - a.score);
+      
+      // Si hay resultados con forceInclude, limitar a esos primero
+      const forceResults = sheetResults.filter(s => s.score >= 99999);
+      const otherResults = sheetResults.filter(s => s.score < 99999);
+      const orderedResults = forceResults.length > 0 ? [...forceResults, ...otherResults] : sheetResults;
       
       // Calcular longitud y limitar a 100k chars total (~25k tokens)
       const MAX_CHARS = 100000;
       let totalChars = 0;
       const selectedSheets = [];
       
-      for (const sheet of sheetResults) {
+      for (const sheet of orderedResults) {
         if (totalChars + sheet.text.length > MAX_CHARS) {
           // Si no cabe completo, intentar versión reducida
           if (selectedSheets.length === 0 && sheet.hasMatches) {
