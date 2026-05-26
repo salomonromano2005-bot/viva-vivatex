@@ -225,7 +225,20 @@ const upload = multer({
   fileFilter: (req, file, cb) => {
     const allowed = ['.xlsx', '.xls', '.csv'];
     const ext = path.extname(file.originalname).toLowerCase();
-    cb(null, allowed.includes(ext));
+    if (!allowed.includes(ext)) {
+      return cb(new Error('Formato no permitido: ' + ext + '. Solo .xlsx, .xls, .csv'));
+    }
+    cb(null, true);
+  }
+});
+
+const uploadPDF = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (ext !== '.pdf') return cb(new Error('Solo se aceptan archivos PDF'));
+    cb(null, true);
   }
 });
 
@@ -247,9 +260,14 @@ function parseFile(buffer, filename) {
 }
 
 // ---- Subir archivos QAD ----
-app.post('/api/qad/upload', upload.array('files', 20), async (req, res) => {
+app.post('/api/qad/upload', (req, res, next) => {
+  upload.array('files', 20)(req, res, err => {
+    if (err) return res.status(400).json({ error: err.message });
+    next();
+  });
+}, async (req, res) => {
   if (!req.files || req.files.length === 0) {
-    return res.status(400).json({ error: 'No se recibieron archivos' });
+    return res.status(400).json({ error: 'No se recibieron archivos o formato no permitido (.xlsx, .xls, .csv)' });
   }
   let totalSheets = 0;
   for (const file of req.files) {
@@ -280,8 +298,8 @@ app.post('/api/qad/upload', upload.array('files', 20), async (req, res) => {
 
 // ---- Estado QAD ----
 // ===== ENDPOINT SUBIDA PDF =====
-app.post('/api/qad/upload-pdf', upload.single('pdf'), async (req, res) => {
-  if(!req.file) return res.status(400).json({ error: 'No se recibio archivo PDF' });
+app.post('/api/qad/upload-pdf', uploadPDF.single('pdf'), async (req, res) => {
+  if(!req.file) return res.status(400).json({ error: 'No se recibió archivo PDF' });
   try {
     // Extraer texto del PDF
     let pdfText = '';
@@ -451,6 +469,23 @@ app.post('/api/excel/generate', async (req, res) => {
 });
 
 // ---- Chat principal ----
+// ========== UTILIDAD: filas a tabla de texto legible ==========
+function rowsToTable(rows) {
+  if (!rows || rows.length === 0) return '(sin datos)';
+  const firstRow = rows.find(r => r && typeof r === 'object');
+  if (!firstRow) return '(sin datos)';
+  const cols = Object.keys(firstRow);
+  if (cols.length === 0) return '(sin datos)';
+  const header = cols.join(' | ');
+  const lines = rows.map(row =>
+    cols.map(col => {
+      const v = row[col];
+      return (v === null || v === undefined || v === '') ? '-' : String(v).trim();
+    }).join(' | ')
+  );
+  return [header, ...lines].join('\n');
+}
+
 app.post('/api/chat', async (req, res) => {
   const { messages, system } = req.body;
   if (!messages || !system) return res.status(400).json({ error: 'Faltan datos' });
@@ -463,150 +498,121 @@ app.post('/api/chat', async (req, res) => {
 
     if (keys.length > 0) {
       const lastMsg = messages[messages.length - 1]?.content?.toLowerCase() || '';
-      
-      // ===== BÚSQUEDA SEMÁNTICA INTELIGENTE =====
-      // Extraer palabras clave de la pregunta (ignorar palabras comunes)
-      const stopWords = new Set(['que','como','cual','cuales','dame','dime','muestra','genera','hacer','haz','para','por','con','sin','los','las','del','una','uno','este','esta','estos','estas','hay','tiene','tienen','puede','pueden','quiero','necesito','favor','por','reporte','tabla','excel','pdf','info','informacion','datos','todo','todos','toda','todas']);
-      const keywords = lastMsg.split(/[\s,;:.!?]+/)
-        .map(w => w.replace(/[^a-záéíóúüñ0-9]/gi, '').toLowerCase())
+
+      // Normalizar texto para comparación
+      const norm = t => (t||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+      const lastMsgNorm = norm(lastMsg);
+
+      // Palabras clave útiles (sin stopwords)
+      const stopWords = new Set(['que','como','cual','cuales','dame','dime','muestra','genera','hacer','haz','para','por','con','sin','los','las','del','una','uno','este','esta','hay','tiene','pueden','quiero','necesito','favor','reporte','tabla','excel','pdf','info','informacion','datos','todo','todos','toda','todas','top','mayor','menor','mas','menos']);
+      const keywords = lastMsgNorm.split(/[\s,;:.!?()]+/)
+        .map(w => w.replace(/[^a-z0-9]/g,''))
         .filter(w => w.length > 2 && !stopWords.has(w));
-      
-      // Para cada hoja, buscar filas que coincidan con las palabras clave
-      const sheetResults = [];
-      
-      // Palabras que indican que se necesitan datos de clientes/cartera
-      const clienteKeywords = ['cliente','clientes','cartera','cobrar','saldo','credito','deuda','vencido','antiguedad','cxc','cobranza','antigüedad'];
-      const ventasKeywords = ['venta','ventas','vendedor','factura','facturacion','ingreso','pedido','pedidos','facturacion_mensual','tabla_vendedores'];
-      const prodKeywords = ['produccion','hilatura','tejido','acabado','merma','kg'];
-      
-      // Mapeo directo de archivos conocidos
-      const fileKeyMap = {
-        'antiguedad_saldos_clientes': ['cliente','clientes','cartera','saldo','cobrar','credito','cobranza','antigüedad','antiguedad'],
-        'facturacion_mensual': ['venta','ventas','factura','facturacion','ingreso'],
-        'tabla_vendedores': ['vendedor','vendedores','venta','ventas'],
-        'cxp_proveedores': ['proveedor','proveedores','cxp','pagar','pago'],
-        'pedidos': ['pedido','pedidos','orden','ordenes'],
-        'inventario': ['inventario','stock','almacen','tela','producto'],
+
+      // Categorías de búsqueda — palabras en el mensaje Y en nombre de archivo
+      const cats = {
+        cliente:    ['cliente','clientes','cartera','cobrar','saldo','credito','deuda','vencido','antiguedad','cxc','cobranza'],
+        venta:      ['venta','ventas','factura','facturacion','ingreso','factur'],
+        vendedor:   ['vendedor','vendedores'],
+        pedido:     ['pedido','pedidos','orden','ordenes'],
+        proveedor:  ['proveedor','proveedores','cxp'],
+        produccion: ['produccion','hilatura','tejido','acabado','merma'],
+        inventario: ['inventario','stock','almacen','tela','producto','especif'],
       };
-      
-      const needsClientes = clienteKeywords.some(k => lastMsg.includes(k));
-      const needsVentas = ventasKeywords.some(k => lastMsg.includes(k));
-      const needsProd = prodKeywords.some(k => lastMsg.includes(k));
+
+      // Qué categorías pide el mensaje
+      const msgCats = new Set();
+      Object.entries(cats).forEach(([cat, words]) => {
+        if (words.some(w => lastMsgNorm.includes(w))) msgCats.add(cat);
+      });
+      // Si no detecta categoría específica, incluir todo
+      const includeAll = msgCats.size === 0;
+
+      const sheetResults = [];
 
       keys.forEach(key => {
         const c = cache[key];
         if (!Array.isArray(c.data) || c.data.length === 0) return;
+
+        const fileNorm = norm(c.filename + ' ' + c.sheet + ' ' + key);
+
+        // Ver qué categorías corresponden a este archivo
+        const fileCats = new Set();
+        Object.entries(cats).forEach(([cat, words]) => {
+          if (words.some(w => fileNorm.includes(w))) fileCats.add(cat);
+        });
+
+        // ¿Es relevante para lo que piden?
+        const catMatch = includeAll || [...msgCats].some(cat => fileCats.has(cat));
         
-        const filenameLower = (c.filename + ' ' + c.sheet).toLowerCase()
-          .normalize('NFD').replace(/[̀-ͯ]/g, '');
-        
-        // Detectar si este archivo es relevante por tipo
-        const keyLower = key.toLowerCase();
-        const isClienteFile = clienteKeywords.some(k => filenameLower.includes(k)) || 
-                              Object.entries(fileKeyMap).some(([fk, kws]) => keyLower.includes(fk) && kws.some(k => clienteKeywords.includes(k)));
-        const isVentasFile = ventasKeywords.some(k => filenameLower.includes(k)) ||
-                             Object.entries(fileKeyMap).some(([fk, kws]) => keyLower.includes(fk) && kws.some(k => ventasKeywords.includes(k)));
-        const isProdFile = prodKeywords.some(k => filenameLower.includes(k));
-        
-        // Verificar mapeo directo de archivo
-        const directMatch = Object.entries(fileKeyMap).some(([fk, kws]) => 
-          keyLower.includes(fk) && kws.some(k => lastMsg.includes(k))
-        );
-        
-        // Incluir archivo si coincide con lo que se pregunta
-        const forceInclude = directMatch || 
-                             (needsClientes && isClienteFile) || 
-                             (needsVentas && isVentasFile) || 
-                             (needsProd && isProdFile);
-        
-        // Buscar coincidencias en los datos
+        // Búsqueda de filas que coincidan con palabras clave del mensaje
         let matchingRows = [];
-        let headerRows = c.data.slice(0, 2);
-        
-        const msgNorm = lastMsg.normalize('NFD').replace(/[̀-ͯ]/g, '');
-        const kwNorm = keywords.map(k => k.normalize('NFD').replace(/[̀-ͯ]/g, ''));
-        
-        if (keywords.length > 0 || forceInclude) {
-          matchingRows = c.data.filter((row, idx) => {
-            if (idx < 2) return false;
-            const rowStr = JSON.stringify(row).toLowerCase()
-              .normalize('NFD').replace(/[̀-ͯ]/g, '');
-            return kwNorm.some(kw => rowStr.includes(kw)) || forceInclude;
+        if (keywords.length > 0) {
+          matchingRows = c.data.filter(row => {
+            const rowNorm = norm(JSON.stringify(row));
+            return keywords.some(kw => rowNorm.includes(kw));
           });
         }
-        
-        // Si forceInclude, tomar todos los datos (hasta 100 filas)
-        const limit = forceInclude ? 100 : 80;
-        const generalSample = c.data.slice(0, forceInclude ? 10 : 5);
-        const combined = [...headerRows, ...matchingRows.slice(0, limit), ...generalSample]
-          .filter((v, i, arr) => arr.findIndex(x => JSON.stringify(x) === JSON.stringify(v)) === i)
-          .slice(0, forceInclude ? 120 : 100);
-        
-        const hasMatches = matchingRows.length > 0 || forceInclude;
-        const score = forceInclude ? 99999 + matchingRows.length : (hasMatches ? matchingRows.length : 0);
 
-        // Convertir filas a texto tabular legible para la IA (no JSON crudo)
-        function rowsToText(rows) {
-          if (!rows || rows.length === 0) return '(sin datos)';
-          const cols = Object.keys(rows[0] || {});
-          if (cols.length === 0) return '(sin columnas)';
-          const header = cols.join(' | ');
-          const divider = cols.map(() => '---').join('-|-');
-          const lines = rows.map(row =>
-            cols.map(col => {
-              const v = row[col];
-              return (v === null || v === undefined) ? '' : String(v);
-            }).join(' | ')
-          );
-          return [header, divider, ...lines].join('\n');
+        // Si el archivo es relevante por categoría, incluir TODOS sus datos (hasta 200 filas)
+        // Si solo hay coincidencias por keyword, incluir esas filas
+        let rowsToInclude;
+        if (catMatch) {
+          // Archivo relevante — mandar todos los datos
+          rowsToInclude = c.data.slice(0, 200);
+        } else if (matchingRows.length > 0) {
+          // Solo hay coincidencias de keyword
+          rowsToInclude = matchingRows.slice(0, 100);
+        } else {
+          return; // No incluir este archivo
         }
 
-        const tableText = rowsToText(combined);
+        const score = catMatch ? 99999 + matchingRows.length : matchingRows.length;
+        const tableText = rowsToTable(rowsToInclude);
 
         sheetResults.push({
-          key, score, hasMatches,
-          text: `\n### ${c.filename} — Hoja: ${c.sheet} (${c.data.length} registros totales)\n${tableText}`,
-          textLength: tableText.length
+          key, score,
+          text: `\n### ${c.filename} — ${c.sheet} (${c.data.length} registros, mostrando ${rowsToInclude.length})\n${tableText}`
         });
       });
-      
-      // Ordenar: primero forceInclude, luego por coincidencias
+
+      // Ordenar por relevancia
       sheetResults.sort((a, b) => b.score - a.score);
-      
-      // Si hay resultados con forceInclude, limitar a esos primero
-      const forceResults = sheetResults.filter(s => s.score >= 99999);
-      const otherResults = sheetResults.filter(s => s.score < 99999);
-      const orderedResults = forceResults.length > 0 ? [...forceResults, ...otherResults] : sheetResults;
-      
-      // Calcular longitud y limitar a 100k chars total (~25k tokens)
-      const MAX_CHARS = 100000;
+
+      // Índice completo de archivos disponibles
+      const sheetIndex = keys.map(k => {
+        const c = cache[k];
+        return `- ${c.filename} / Hoja: ${c.sheet}: ${Array.isArray(c.data) ? c.data.length : '?'} registros`;
+      }).join('\n');
+
+      // Armar contexto respetando límite de tokens (~120k chars = ~30k tokens)
+      const MAX_CHARS = 120000;
       let totalChars = 0;
       const selectedSheets = [];
-      
-      for (const sheet of orderedResults) {
+
+      for (const sheet of sheetResults) {
         if (totalChars + sheet.text.length > MAX_CHARS) {
-          // Si no cabe completo, intentar versión reducida
-          if (selectedSheets.length === 0 && sheet.hasMatches) {
-            // Al menos incluir las coincidencias de la hoja más relevante
-            const shortText = sheet.text.substring(0, MAX_CHARS - totalChars - 100);
-            if (shortText.length > 200) selectedSheets.push(shortText + '\n...(datos truncados)');
+          // Si es el primero y no cabe completo, meter lo que quepa
+          if (selectedSheets.length === 0) {
+            const partial = sheet.text.substring(0, MAX_CHARS - 200);
+            selectedSheets.push(partial + '\n...(datos truncados por límite)');
           }
           break;
         }
         selectedSheets.push(sheet.text);
         totalChars += sheet.text.length;
       }
-      
-      // Índice de todas las hojas disponibles
-      const sheetIndex = keys.map(k => {
-        const c = cache[k];
-        return `- ${c.filename} / ${c.sheet}: ${Array.isArray(c.data) ? c.data.length : '?'} registros`;
-      }).join('\n');
-      
+
       if (selectedSheets.length > 0) {
-        qadContext = `\n\nDATOS QAD (${new Date().toLocaleString('es-MX')}):\nHojas disponibles:\n${sheetIndex}\n\nDatos relevantes para tu consulta:\n${selectedSheets.join('\n')}`;
+        qadContext = `\n\n===== DATOS QAD (${new Date().toLocaleString('es-MX')}) =====\nArchivos disponibles:\n${sheetIndex}\n\n--- DATOS COMPLETOS ---\n${selectedSheets.join('\n')}`;
       } else {
-        qadContext = `\n\nDatos disponibles en QAD (${keys.length} hojas):\n${sheetIndex}\n\nNota: Los datos son muy grandes. Haz una pregunta más específica para ver los registros.`;
+        // Si no encontró nada relevante, mandar muestra de todos los archivos
+        const samples = keys.slice(0,3).map(k => {
+          const c = cache[k];
+          const sample = (c.data||[]).slice(0,20);
+          return `\n### ${c.filename} — ${c.sheet} (muestra de 20 de ${c.data.length} registros)\n${rowsToTable(sample)}`;
+        }).join('\n');
+        qadContext = `\n\n===== DATOS QAD (${new Date().toLocaleString('es-MX')}) =====\nArchivos disponibles:\n${sheetIndex}\n\nMuestra de datos disponibles:\n${samples}`;
       }
     }
 
@@ -650,7 +656,7 @@ app.post('/api/chat', async (req, res) => {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-5',
-        max_tokens: 2048,
+        max_tokens: 4096,
         system: fullSystem,
         messages,
       }),
