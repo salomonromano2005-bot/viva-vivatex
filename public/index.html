@@ -569,6 +569,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;background
               <div style="font-size:12px;color:#6a7060">Formatos: .xlsx, .xls, .csv · Múltiples archivos permitidos</div>
             </div>
             <input type="file" id="adminFileInput" accept=".xlsx,.xls,.csv" multiple style="display:none" onchange="uploadQADFiles(this.files)">
+            <input type="file" id="adminPdfInput" accept=".pdf" multiple style="display:none" onchange="uploadQADPDFs(this.files)">
             <div id="qadUploadStatus" style="margin-top:12px;font-size:13px;min-height:20px"></div>
             <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
               <button class="admin-save-btn" style="margin:0" onclick="document.getElementById('adminFileInput').click()">📂 Seleccionar archivos QAD</button>
@@ -1393,19 +1394,12 @@ async function sendMessage(){
       displayReply = displayReply.replace(/\{[\s\S]*?"hojas"[\s\S]*?"columnas"[\s\S]*?\}/g, '');
       displayReply = displayReply.replace(/\{[\s\S]*?"filas"[\s\S]*?"columnas"[\s\S]*?\}/g, '');
       displayReply = displayReply.replace(/\{[\s\S]*?"titulo"[\s\S]*?"hojas"[\s\S]*?\}/g, '');
-      // Limpiar líneas que sean solo JSON residual (NO eliminar tablas markdown)
-      displayReply = displayReply.split('\n').filter(line => {
-        const t = line.trim();
-        if(!t) return true;
-        // NUNCA eliminar líneas de tablas markdown (empiezan con |)
-        if(t.startsWith('|')) return true;
-        // Eliminar solo JSON puro: {"key": val} o ["val1","val2"]
-        if(t.startsWith('{') && t.endsWith('}') && t.includes(':')) return false;
-        if(t.startsWith('[') && (t.endsWith(']') || t.endsWith('],'))) return false;
-        if(t === '},' || t === '}' || t === '],' || t === ']') return false;
-        if(/^"[a-z_]+":\s/.test(t) && !t.includes('|')) return false;
-        return true;
-      }).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+      // Limpiar solo bloques JSON grandes, NUNCA tocar tablas markdown ni texto normal
+      // Solo eliminar si hay un bloque JSON completo con hojas/columnas/filas
+      displayReply = displayReply
+        .replace(/\{[^{}]*"hojas"[^{}]*\[[\s\S]*?\]\s*\}/g, '')
+        .replace(/\{[^{}]*"columnas"[\s\S]*?"filas"[\s\S]*?\}/g, '')
+        .replace(/\n{3,}/g, '\n\n').trim();
     } catch(e){}
 
     // Limpiar gráficas ASCII antes de guardar y mostrar
@@ -1660,6 +1654,23 @@ function renderUsersTable(){
       </td>
     </tr>
   `).join('');
+}
+
+async function uploadQADPDFs(files){
+  if(!files || files.length === 0) return;
+  const statusEl = document.getElementById('qadUploadStatus');
+  if(statusEl) statusEl.textContent = '⏳ Subiendo PDFs...';
+  for(const file of files){
+    const formData = new FormData();
+    formData.append('pdf', file);
+    try {
+      const res = await fetch('/api/qad/upload-pdf', {method:'POST', body: formData});
+      const data = await res.json();
+      if(data.ok) showToast(`✅ PDF "${file.name}" subido`, 'success');
+      else showToast(`❌ Error: ${data.error}`, 'error');
+    } catch(e){ showToast('Error subiendo PDF','error'); }
+  }
+  if(statusEl) statusEl.textContent = '✅ PDFs procesados';
 }
 
 async function migrateUsersToPostgres(){
