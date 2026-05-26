@@ -9,6 +9,7 @@ const pdfParse = require('pdf-parse');
 const { Pool } = require('pg');
 
 const app = express();
+
 app.use(express.json({ limit: '50mb' }));
 
 app.use((req, res, next) => {
@@ -22,7 +23,6 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 const PORT = process.env.PORT || 3000;
 const DATABASE_URL = process.env.DATABASE_URL || '';
-
 const AI_PROVIDER = process.env.AI_PROVIDER || 'openai';
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4.1';
@@ -627,22 +627,45 @@ function rowsToTable(rows) {
   if (cols.length === 0) return '(sin datos)';
 
   const header = cols.join(' | ');
+  const separator = cols.map(() => '---').join(' | ');
 
   const lines = rows.map(row =>
     cols.map(col => {
       const v = row[col];
-      return (v === null || v === undefined || v === '') ? '-' : String(v).trim();
+      if (v === null || v === undefined || v === '') return '-';
+      return String(v).replace(/\n/g, ' ').replace(/\|/g, '/').trim();
     }).join(' | ')
   );
 
-  return [header, ...lines].join('\n');
+  return [header, separator, ...lines].join('\n');
 }
 
 function normalizeText(text) {
   return String(text || '')
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function getImportantKeywords(text) {
+  const stopWords = new Set([
+    'que', 'como', 'cual', 'cuales', 'dame', 'dime', 'muestra', 'genera',
+    'hacer', 'haz', 'para', 'por', 'con', 'sin', 'los', 'las', 'del',
+    'una', 'uno', 'este', 'esta', 'hay', 'tiene', 'pueden', 'quiero',
+    'necesito', 'favor', 'reporte', 'tabla', 'excel', 'pdf', 'info',
+    'informacion', 'datos', 'todo', 'todos', 'toda', 'todas', 'top',
+    'mayor', 'menor', 'mas', 'menos', 'cliente', 'clientes', 'saldo',
+    'saldos', 'ventas', 'venta', 'archivo', 'archivos', 'qad', 'sobre',
+    'de', 'la', 'el', 'en', 'y', 'o', 'a', 'un', 'al', 'me', 'lo'
+  ]);
+
+  return normalizeText(text)
+    .split(' ')
+    .map(w => w.trim())
+    .filter(w => w.length > 2 && !stopWords.has(w));
 }
 
 function buildQADContext(cache, messages) {
@@ -651,22 +674,11 @@ function buildQADContext(cache, messages) {
 
   const lastMsg = messages[messages.length - 1]?.content || '';
   const lastMsgNorm = normalizeText(lastMsg);
+  const keywords = getImportantKeywords(lastMsg);
 
-  const stopWords = new Set([
-    'que', 'como', 'cual', 'cuales', 'dame', 'dime', 'muestra', 'genera',
-    'hacer', 'haz', 'para', 'por', 'con', 'sin', 'los', 'las', 'del',
-    'una', 'uno', 'este', 'esta', 'hay', 'tiene', 'pueden', 'quiero',
-    'necesito', 'favor', 'reporte', 'tabla', 'excel', 'pdf', 'info',
-    'informacion', 'datos', 'todo', 'todos', 'toda', 'todas', 'top',
-    'mayor', 'menor', 'mas', 'menos',
-  ]);
+  console.log('🔎 Keywords detectadas:', keywords);
 
-  const keywords = lastMsgNorm
-    .split(/[\s,;:.!?()]+/)
-    .map(w => w.replace(/[^a-z0-9]/g, ''))
-    .filter(w => w.length > 2 && !stopWords.has(w));
-
-  const cats = {
+  const categories = {
     cliente: ['cliente', 'clientes', 'cartera', 'cobrar', 'saldo', 'credito', 'deuda', 'vencido', 'antiguedad', 'cxc', 'cobranza'],
     venta: ['venta', 'ventas', 'factura', 'facturacion', 'ingreso', 'factur'],
     vendedor: ['vendedor', 'vendedores'],
@@ -677,92 +689,141 @@ function buildQADContext(cache, messages) {
   };
 
   const msgCats = new Set();
-
-  Object.entries(cats).forEach(([cat, words]) => {
+  Object.entries(categories).forEach(([cat, words]) => {
     if (words.some(w => lastMsgNorm.includes(w))) msgCats.add(cat);
   });
 
-  const includeAll = msgCats.size === 0;
-  const sheetResults = [];
-
-  keys.forEach(key => {
-    const c = cache[key];
-    if (!c || !Array.isArray(c.data) || c.data.length === 0) return;
-
-    const fileNorm = normalizeText(`${c.filename} ${c.sheet} ${key}`);
-
-    const fileCats = new Set();
-
-    Object.entries(cats).forEach(([cat, words]) => {
-      if (words.some(w => fileNorm.includes(w))) fileCats.add(cat);
-    });
-
-    const catMatch = includeAll || [...msgCats].some(cat => fileCats.has(cat));
-
-    let matchingRows = [];
-
-    if (keywords.length > 0) {
-      matchingRows = c.data.filter(row => {
-        const rowNorm = normalizeText(JSON.stringify(row));
-        return keywords.some(kw => rowNorm.includes(kw));
-      });
-    }
-
-    let rowsToInclude;
-
-    if (catMatch) {
-      rowsToInclude = c.data.slice(0, 200);
-    } else if (matchingRows.length > 0) {
-      rowsToInclude = matchingRows.slice(0, 100);
-    } else {
-      return;
-    }
-
-    const score = catMatch ? 99999 + matchingRows.length : matchingRows.length;
-    const tableText = rowsToTable(rowsToInclude);
-
-    sheetResults.push({
-      key,
-      score,
-      text: `\n### ${c.filename} — ${c.sheet} (${c.data.length} registros, mostrando ${rowsToInclude.length})\n${tableText}`,
-    });
-  });
-
-  sheetResults.sort((a, b) => b.score - a.score);
+  const includeAll = msgCats.size === 0 || lastMsgNorm.includes('que archivos') || lastMsgNorm.includes('que tienes');
 
   const sheetIndex = keys.map(k => {
     const c = cache[k];
     return `- ${c.filename} / Hoja: ${c.sheet}: ${Array.isArray(c.data) ? c.data.length : '?'} registros`;
   }).join('\n');
 
-  const MAX_CHARS = 120000;
-  let totalChars = 0;
-  const selectedSheets = [];
+  const results = [];
 
-  for (const sheet of sheetResults) {
-    if (totalChars + sheet.text.length > MAX_CHARS) {
-      if (selectedSheets.length === 0) {
-        const partial = sheet.text.substring(0, MAX_CHARS - 200);
-        selectedSheets.push(partial + '\n...(datos truncados por límite)');
+  for (const key of keys) {
+    const c = cache[key];
+    if (!c || !Array.isArray(c.data) || c.data.length === 0) continue;
+
+    const rows = c.data;
+    const fileNorm = normalizeText(`${c.filename} ${c.sheet} ${key}`);
+
+    const fileCats = new Set();
+    Object.entries(categories).forEach(([cat, words]) => {
+      if (words.some(w => fileNorm.includes(w))) fileCats.add(cat);
+    });
+
+    const catMatch = includeAll || [...msgCats].some(cat => fileCats.has(cat));
+
+    const matchedRows = [];
+
+    for (const row of rows) {
+      const rowText = normalizeText(JSON.stringify(row));
+      let score = 0;
+
+      for (const kw of keywords) {
+        if (rowText.includes(kw)) score += 20;
+
+        const words = rowText.split(' ');
+        if (words.some(w => w.startsWith(kw) || kw.startsWith(w))) score += 7;
+      }
+
+      if (catMatch && keywords.length === 0) score += 3;
+      if (catMatch && keywords.length > 0) score += 2;
+
+      if (score > 0 || (catMatch && includeAll)) {
+        matchedRows.push({ row, score });
+      }
+    }
+
+    matchedRows.sort((a, b) => b.score - a.score);
+
+    let rowsToInclude = [];
+
+    if (keywords.length > 0) {
+      rowsToInclude = matchedRows.slice(0, 200).map(r => r.row);
+    } else if (catMatch) {
+      rowsToInclude = rows.slice(0, 200);
+    }
+
+    if (rowsToInclude.length > 0) {
+      results.push({
+        key,
+        score: matchedRows.reduce((s, r) => s + r.score, 0) + (catMatch ? 1000 : 0),
+        text: `
+### ARCHIVO: ${c.filename}
+### HOJA: ${c.sheet}
+### TOTAL REGISTROS: ${rows.length}
+### REGISTROS ENVIADOS: ${rowsToInclude.length}
+
+${rowsToTable(rowsToInclude)}
+`
+      });
+    }
+  }
+
+  results.sort((a, b) => b.score - a.score);
+
+  const MAX_CHARS = 140000;
+  let totalChars = 0;
+  const selected = [];
+
+  for (const r of results) {
+    if (totalChars + r.text.length > MAX_CHARS) {
+      if (selected.length === 0) {
+        selected.push(r.text.substring(0, MAX_CHARS - 200) + '\n...(datos truncados por límite)');
       }
       break;
     }
 
-    selectedSheets.push(sheet.text);
-    totalChars += sheet.text.length;
+    selected.push(r.text);
+    totalChars += r.text.length;
   }
 
-  if (selectedSheets.length > 0) {
-    return `\n\n===== DATOS QAD (${new Date().toLocaleString('es-MX')}) =====\nArchivos disponibles:\n${sheetIndex}\n\n--- DATOS RELEVANTES ---\n${selectedSheets.join('\n')}`;
+  if (selected.length === 0) {
+    const samples = keys.slice(0, 5).map(k => {
+      const c = cache[k];
+      return `
+### ARCHIVO: ${c.filename}
+### HOJA: ${c.sheet}
+### TOTAL REGISTROS: ${c.data.length}
+
+${rowsToTable((c.data || []).slice(0, 30))}
+`;
+    }).join('\n');
+
+    return `
+===== DATOS QAD =====
+
+ARCHIVOS DISPONIBLES:
+${sheetIndex}
+
+No hubo coincidencias exactas con la pregunta, pero estos son ejemplos de los datos disponibles:
+
+${samples}
+`;
   }
 
-  const samples = keys.slice(0, 3).map(k => {
-    const c = cache[k];
-    const sample = (c.data || []).slice(0, 20);
-    return `\n### ${c.filename} — ${c.sheet} (muestra de 20 de ${c.data.length} registros)\n${rowsToTable(sample)}`;
-  }).join('\n');
+  return `
+===== DATOS QAD DISPONIBLES =====
 
-  return `\n\n===== DATOS QAD (${new Date().toLocaleString('es-MX')}) =====\nArchivos disponibles:\n${sheetIndex}\n\nMuestra de datos disponibles:\n${samples}`;
+ARCHIVOS DISPONIBLES:
+${sheetIndex}
+
+===== DATOS RELEVANTES PARA ESTA CONSULTA =====
+
+${selected.join('\n')}
+
+===== INSTRUCCIONES DE USO DE DATOS =====
+
+- Usa ÚNICAMENTE los datos anteriores.
+- Si el usuario pregunta por un cliente, busca coincidencias por nombre, código, razón social o cualquier campo parecido.
+- Si hay datos, NO digas que no tienes datos.
+- Responde con tablas cuando haya más de un registro.
+- Mantén nombres, códigos, fechas e importes exactamente como aparecen.
+- Si hay muchos registros, organiza por ranking, saldo, fecha, cliente, vendedor o categoría.
+`;
 }
 
 function buildPermissionContext(username) {
@@ -834,11 +895,34 @@ app.post('/api/chat', async (req, res) => {
     const permContext = buildPermissionContext(username);
 
     const dataSize = qadContext.length;
-    const sheetsIncluded = (qadContext.match(/###/g) || []).length;
+    const sheetsIncluded = (qadContext.match(/### ARCHIVO:/g) || []).length;
 
     console.log(`Chat request: user="${username || '-'}" provider="${AI_PROVIDER}" model="${OPENAI_MODEL}" qadContext=${dataSize} chars, sheets=${sheetsIncluded}`);
 
-    const fullSystem = String(system) + qadContext + permContext;
+    const fullSystem = `
+${String(system)}
+
+${qadContext}
+
+${permContext}
+
+==============================
+REGLAS OBLIGATORIAS DE AVIVA
+==============================
+
+1. Eres AVIVA, asistente empresarial de Grupo Vivatex.
+2. Responde siempre en español.
+3. Responde con estilo corporativo, limpio, concreto y profesional.
+4. Si hay datos QAD disponibles, usa esos datos y no respondas genérico.
+5. Si el usuario pregunta por clientes, cartera, saldos, ventas, pedidos, inventario o producción, responde con tabla.
+6. Si pregunta por un cliente específico, entrega todos los datos encontrados de ese cliente en una tabla ordenada.
+7. Mantén nombres, códigos, fechas e importes exactamente como aparecen en los datos.
+8. No inventes datos.
+9. Si no encuentras coincidencia exacta, di qué archivos sí tienes y qué campos puedes revisar.
+10. Si el usuario pide Excel, prepara la respuesta para que el frontend pueda generar el Excel.
+11. Si hay muchos datos, primero da resumen ejecutivo y luego tabla.
+12. No digas "no tengo datos" si en el contexto hay archivos QAD disponibles.
+`;
 
     const openaiMessages = [
       { role: 'system', content: fullSystem },
@@ -857,7 +941,7 @@ app.post('/api/chat', async (req, res) => {
       body: JSON.stringify({
         model: OPENAI_MODEL,
         messages: openaiMessages,
-        temperature: 0.2,
+        temperature: 0.15,
         max_tokens: 4096,
       }),
     });
