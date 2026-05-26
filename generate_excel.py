@@ -1,420 +1,266 @@
+"""
+Generador de Excel profesional para AVIVA - Grupo Vivatex S.A. de C.V.
+Uso: python3 generate_excel.py <json_base64> <output_path>
+"""
 import sys
 import json
-import traceback
+import base64
+from io import BytesIO
 from openpyxl import Workbook
-from openpyxl.styles import (
-    Font, PatternFill, Alignment, Border, Side, GradientFill
-)
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.chart import BarChart, LineChart, PieChart, Reference
-from openpyxl.chart.series import DataPoint
 from openpyxl.utils import get_column_letter
-from openpyxl.formatting.rule import ColorScaleRule, DataBarRule, CellIsRule, FormulaRule
-from openpyxl.styles.differential import DifferentialStyle
-import re
+import datetime
 
-# ─── PALETA VIVATEX ───────────────────────────────────────────────────────────
-V_DARK_GREEN   = "1E6B2E"
-V_MID_GREEN    = "4A9A20"
-V_LIGHT_GREEN  = "6BBF3E"
-V_PALE_GREEN   = "EAF5E0"
-V_PALE_GREEN2  = "D4EDBA"
-V_WHITE        = "FFFFFF"
-V_DARK_GRAY    = "2D2D2D"
-V_MID_GRAY     = "666666"
-V_LIGHT_GRAY   = "F5F5F5"
-V_BORDER_GRAY  = "D0D0D0"
-V_RED          = "C0392B"
-V_ORANGE       = "E67E22"
-V_YELLOW       = "F1C40F"
-V_BLUE         = "2980B9"
+VERDE      = "1E6B2E"
+VERDE_MED  = "4A9A20"
+VERDE_L    = "D4EDDA"
+VERDE_XL   = "F0F9F0"
+BLANCO     = "FFFFFF"
+NEGRO      = "1C1C1C"
+GRIS_OSC   = "4A4A4A"
+GRIS_L     = "F5F5F5"
+AZUL_H     = "1A3A5C"
 
-def fill(hex_color):
-    return PatternFill("solid", fgColor=hex_color)
-
-def font(bold=False, size=11, color=V_DARK_GRAY, italic=False, name="Calibri"):
-    return Font(bold=bold, size=size, color=color, italic=italic, name=name)
-
-def align(h="left", v="center", wrap=False):
+def fill(c): return PatternFill("solid", fgColor=c)
+def border():
+    s = Side(style='thin', color="CCCCCC")
+    return Border(left=s, right=s, top=s, bottom=s)
+def font(size=10, bold=False, color=NEGRO, italic=False):
+    return Font(name='Calibri', size=size, bold=bold, color=color, italic=italic)
+def align(h='left', v='center', wrap=True):
     return Alignment(horizontal=h, vertical=v, wrap_text=wrap)
 
-def border_thin(sides="all"):
-    s = Side(style="thin", color=V_BORDER_GRAY)
-    n = Side(style=None)
-    if sides == "all":
-        return Border(left=s, right=s, top=s, bottom=s)
-    if sides == "bottom":
-        return Border(bottom=s)
-    if sides == "top_bottom":
-        return Border(top=s, bottom=s)
-    return Border(left=s, right=s, top=s, bottom=s)
-
-def border_medium():
-    s = Side(style="medium", color=V_DARK_GREEN)
-    return Border(left=s, right=s, top=s, bottom=s)
-
-def set_col_widths(ws, widths):
-    for col, w in widths.items():
-        ws.column_dimensions[col].width = w
-
-def merge_and_write(ws, cell_range, value, fnt=None, fll=None, aln=None, brd=None):
-    ws.merge_cells(cell_range)
-    cell = ws[cell_range.split(":")[0]]
-    cell.value = value
-    if fnt: cell.font = fnt
-    if fll: cell.fill = fll
-    if aln: cell.alignment = aln
-    if brd: cell.border = brd
-
-def write_header_row(ws, row, headers, fill_color=V_DARK_GREEN, font_color=V_WHITE, start_col=1, row_height=22):
-    ws.row_dimensions[row].height = row_height
-    for i, h in enumerate(headers, start=start_col):
-        c = ws.cell(row=row, column=i)
-        c.value = h
-        c.font = Font(bold=True, size=10, color=font_color, name="Calibri")
-        c.fill = fill(fill_color)
-        c.alignment = align("center")
-        c.border = border_thin()
-
-def write_data_row(ws, row, values, even=False, start_col=1, row_height=18, formats=None):
-    ws.row_dimensions[row].height = row_height
-    bg = V_PALE_GREEN if even else V_WHITE
-    for i, v in enumerate(values, start=start_col):
-        c = ws.cell(row=row, column=i)
-        c.value = v
-        c.fill = fill(bg)
-        c.alignment = align("center")
-        c.border = border_thin()
-        if formats and i - start_col < len(formats) and formats[i - start_col]:
-            c.number_format = formats[i - start_col]
-
-def semaforo_color(estatus):
-    e = str(estatus).upper()
-    if "CRÍTICO" in e or "CRITICO" in e: return V_RED
-    if "ALERTA" in e: return V_ORANGE
-    if "VIGILANCIA" in e: return V_YELLOW
-    if "META" in e or "✔" in e: return V_LIGHT_GREEN
-    return V_LIGHT_GRAY
-
-def add_portada(wb, titulo, subtitulo, empresa, periodo, confidencial):
-    ws = wb.active
-    ws.title = "Portada"
+def portada(wb, titulo, usuario, periodo, subtitulo):
+    ws = wb.create_sheet("Portada", 0)
     ws.sheet_view.showGridLines = False
-    ws.column_dimensions['A'].width = 2
-    ws.column_dimensions['B'].width = 60
-    ws.column_dimensions['C'].width = 20
-    ws.row_dimensions[1].height = 8
+    ws.column_dimensions['A'].width = 3
+    ws.column_dimensions['B'].width = 55
+    ws.column_dimensions['C'].width = 25
 
-    # Franja superior verde oscuro
-    for r in range(2, 8):
-        ws.row_dimensions[r].height = 18
-        for col in range(1, 4):
-            ws.cell(row=r, column=col).fill = fill(V_DARK_GREEN)
+    # Fondo verde encabezado
+    for r in range(1, 5):
+        for col in ['A','B','C','D']:
+            ws[f'{col}{r}'].fill = fill(VERDE)
 
-    ws.merge_cells("B2:C7")
-    c = ws["B2"]
-    c.value = empresa.upper()
-    c.font = Font(bold=True, size=22, color=V_WHITE, name="Calibri")
-    c.alignment = align("left", "center")
-    c.fill = fill(V_DARK_GREEN)
+    ws.row_dimensions[2].height = 55
+    ws.row_dimensions[3].height = 35
+    ws.merge_cells('B2:C2')
+    ws['B2'].value = "GRUPO VIVATEX S.A. DE C.V."
+    ws['B2'].font = Font(name='Calibri', size=22, bold=True, color=BLANCO)
+    ws['B2'].alignment = align('left')
 
-    # Línea decorativa verde claro
-    for col in range(1, 4):
-        ws.cell(row=8, column=col).fill = fill(V_LIGHT_GREEN)
-    ws.row_dimensions[8].height = 6
+    ws.merge_cells('B3:C3')
+    ws['B3'].value = "AVIVA — Sistema de Inteligencia Empresarial"
+    ws['B3'].font = Font(name='Calibri', size=12, color="AADDAA", italic=True)
+    ws['B3'].alignment = align('left')
 
-    # Título principal
-    ws.row_dimensions[10].height = 10
-    ws.merge_cells("B11:C11")
-    c = ws["B11"]
-    c.value = titulo.upper()
-    c.font = Font(bold=True, size=18, color=V_DARK_GREEN, name="Calibri")
-    c.alignment = align("left", "center")
+    # Línea divisora
+    for col in ['A','B','C','D']:
+        ws[f'{col}5'].fill = fill(VERDE_MED)
+        ws.row_dimensions[5].height = 5
 
-    ws.merge_cells("B12:C12")
-    c = ws["B12"]
-    c.value = subtitulo
-    c.font = Font(size=13, color=V_MID_GREEN, name="Calibri", italic=True)
-    c.alignment = align("left", "center")
-    ws.row_dimensions[12].height = 20
+    ws.row_dimensions[7].height = 35
+    ws.merge_cells('B7:C7')
+    ws['B7'].value = titulo.upper()
+    ws['B7'].font = Font(name='Calibri', size=18, bold=True, color=VERDE)
+    ws['B7'].alignment = align('left')
 
-    ws.row_dimensions[14].height = 6
-    for col in range(1, 4):
-        ws.cell(row=14, column=col).fill = fill(V_PALE_GREEN2)
+    if subtitulo:
+        ws.row_dimensions[8].height = 22
+        ws.merge_cells('B8:C8')
+        ws['B8'].value = subtitulo
+        ws['B8'].font = Font(name='Calibri', size=11, color=GRIS_OSC, italic=True)
+        ws['B8'].alignment = align('left')
 
-    # Datos del reporte
-    datos = [
-        ("📅 PERÍODO:", periodo),
-        ("🏢 EMPRESA:", empresa),
-        ("🔒 CLASIFICACIÓN:", confidencial),
+    meta = [
+        ("Período:", periodo),
+        ("Generado por:", "AVIVA · Inteligencia Artificial Vivatex"),
+        ("Fecha:", datetime.datetime.now().strftime("%d/%m/%Y %H:%M")),
+        ("Usuario:", usuario),
+        ("Confidencial:", "Uso exclusivo interno — Grupo Vivatex S.A. de C.V."),
     ]
-    for i, (label, val) in enumerate(datos, start=16):
+    for i, (label, val) in enumerate(meta, 10):
         ws.row_dimensions[i].height = 22
-        c = ws.cell(row=i, column=2)
-        c.value = label
-        c.font = Font(bold=True, size=11, color=V_DARK_GREEN, name="Calibri")
-        c.alignment = align("left")
-        d = ws.cell(row=i, column=3)
-        d.value = val
-        d.font = Font(size=11, color=V_DARK_GRAY, name="Calibri")
-        d.alignment = align("left")
+        ws[f'B{i}'].value = label
+        ws[f'B{i}'].font = Font(name='Calibri', size=10, bold=True, color=GRIS_OSC)
+        ws[f'C{i}'].value = val
+        ws[f'C{i}'].font = Font(name='Calibri', size=10, color=NEGRO)
 
-    # Línea inferior
-    for col in range(1, 4):
-        ws.cell(row=22, column=col).fill = fill(V_DARK_GREEN)
-    ws.row_dimensions[22].height = 5
-
-    ws.merge_cells("B24:C24")
-    c = ws["B24"]
-    c.value = "Generado por AVIVA · Inteligencia Artificial de Grupo Vivatex S.A. de C.V."
-    c.font = Font(size=9, color=V_MID_GRAY, italic=True, name="Calibri")
-    c.alignment = align("center")
-
-    ws.print_area = "A1:C30"
-    return ws
-
-def add_resumen_sheet(wb, data):
-    ws = wb.create_sheet("📊 Resumen Ejecutivo")
-    ws.sheet_view.showGridLines = False
-    ws.column_dimensions['A'].width = 2
-    ws.column_dimensions['B'].width = 35
-    ws.column_dimensions['C'].width = 18
-    ws.column_dimensions['D'].width = 18
-    ws.column_dimensions['E'].width = 18
-    ws.column_dimensions['F'].width = 22
-
-    # Título de sección
-    ws.merge_cells("B1:F1")
-    ws.row_dimensions[1].height = 8
-
-    ws.merge_cells("B2:F2")
-    c = ws["B2"]
-    c.value = "📊 RESUMEN EJECUTIVO"
-    c.font = Font(bold=True, size=14, color=V_WHITE, name="Calibri")
-    c.fill = fill(V_DARK_GREEN)
-    c.alignment = align("center")
-    ws.row_dimensions[2].height = 28
-
-    # Subtítulo
-    ws.merge_cells("B3:F3")
-    c = ws["B3"]
-    c.value = data.get("subtitulo", "Indicadores Clave de Desempeño")
-    c.font = Font(size=10, color=V_MID_GRAY, italic=True, name="Calibri")
-    c.alignment = align("center")
-    ws.row_dimensions[3].height = 18
-
-    row = 5
-    for seccion in data.get("secciones", []):
-        # Encabezado de sección
-        ws.merge_cells(f"B{row}:F{row}")
-        c = ws[f"B{row}"]
-        c.value = seccion.get("titulo", "")
-        c.font = Font(bold=True, size=11, color=V_WHITE, name="Calibri")
-        c.fill = fill(V_MID_GREEN)
-        c.alignment = align("center")
-        ws.row_dimensions[row].height = 22
-        row += 1
-
-        cols = seccion.get("columnas", [])
-        if cols:
-            write_header_row(ws, row, cols, start_col=2)
-            row += 1
-
-            for j, fila in enumerate(seccion.get("filas", [])):
-                is_even = j % 2 == 0
-                for k, val in enumerate(fila, start=2):
-                    c = ws.cell(row=row, column=k)
-                    c.value = val
-                    bg = V_PALE_GREEN if is_even else V_WHITE
-
-                    # Semáforo en columna de estatus
-                    if "estatus" in (cols[k-2].lower() if k-2 < len(cols) else ""):
-                        color = semaforo_color(str(val))
-                        c.fill = fill(color)
-                        c.font = Font(bold=True, size=9, color=V_WHITE if color in [V_RED, V_DARK_GREEN, V_MID_GREEN] else V_DARK_GRAY, name="Calibri")
-                    else:
-                        c.fill = fill(bg)
-                        c.font = Font(size=10, color=V_DARK_GRAY, name="Calibri")
-
-                    c.alignment = align("center")
-                    c.border = border_thin()
-                    ws.row_dimensions[row].height = 18
-                row += 1
-
-        row += 2
-
-    return ws
-
-def add_data_sheet(wb, hoja_data):
-    nombre = hoja_data.get("nombre", "Datos")
-    ws = wb.create_sheet(nombre)
-    ws.sheet_view.showGridLines = False
+def hoja_datos(wb, hoja_data, titulo, usuario, periodo):
+    nombre = str(hoja_data.get("nombre", "Datos"))[:31]
     columnas = hoja_data.get("columnas", [])
     filas = hoja_data.get("filas", [])
-    totales = hoja_data.get("totales", [])
-    tipo_grafica = hoja_data.get("tipo_grafica", None)
+    totales = hoja_data.get("totales", None)
+    tipo_graf = hoja_data.get("tipo_grafica", None)
 
-    # Widths dinámicos
-    ws.column_dimensions['A'].width = 2
-    for i in range(len(columnas)):
-        col_letter = get_column_letter(i + 2)
-        ws.column_dimensions[col_letter].width = max(16, len(str(columnas[i])) + 4)
+    ws = wb.create_sheet(nombre)
+    ws.sheet_view.showGridLines = False
 
-    ws.row_dimensions[1].height = 8
+    n_cols = max(len(columnas), 1)
 
-    # Título de hoja
-    last_col = get_column_letter(len(columnas) + 1)
-    ws.merge_cells(f"B2:{last_col}2")
-    c = ws["B2"]
-    c.value = nombre.replace("📈", "").replace("📊", "").strip().upper()
-    c.font = Font(bold=True, size=13, color=V_WHITE, name="Calibri")
-    c.fill = fill(V_DARK_GREEN)
-    c.alignment = align("center")
-    ws.row_dimensions[2].height = 26
+    # Encabezado empresa
+    ws.row_dimensions[1].height = 10
+    ws.row_dimensions[2].height = 45
+    ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=n_cols)
+    c = ws.cell(row=2, column=1)
+    c.value = f"GRUPO VIVATEX S.A. DE C.V.  ·  {titulo.upper()}"
+    c.font = Font(name='Calibri', size=13, bold=True, color=BLANCO)
+    c.fill = fill(VERDE)
+    c.alignment = align('center')
 
-    ws.row_dimensions[3].height = 6
-    for col in range(2, len(columnas) + 2):
-        ws.cell(row=3, column=col).fill = fill(V_LIGHT_GREEN)
+    ws.row_dimensions[3].height = 5
+    ws.row_dimensions[4].height = 18
+    ws.merge_cells(start_row=4, start_column=1, end_row=4, end_column=n_cols)
+    c = ws.cell(row=4, column=1)
+    c.value = f"{nombre}   |   {periodo}   |   Generado {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}   |   Usuario: {usuario}"
+    c.font = Font(name='Calibri', size=9, italic=True, color=GRIS_OSC)
+    c.fill = fill(VERDE_L)
+    c.alignment = align('center')
 
-    # Encabezados
-    write_header_row(ws, 4, columnas, start_col=2)
+    # Anchos de columna automáticos
+    for j, col_name in enumerate(columnas, 1):
+        max_w = max(len(str(col_name)) + 4, 12)
+        for fila in filas:
+            if j-1 < len(fila):
+                max_w = max(max_w, min(len(str(fila[j-1])) + 2, 42))
+        ws.column_dimensions[get_column_letter(j)].width = max_w
 
-    # Datos
-    for j, fila in enumerate(filas):
-        row = j + 5
-        is_even = j % 2 == 0
-        for k, val in enumerate(fila, start=2):
-            c = ws.cell(row=row, column=k)
-            try:
-                num = float(str(val).replace(",", "").replace("$", "").replace("%", ""))
-                c.value = num
-                if "%" in str(val):
-                    c.number_format = '0.00%'
-                elif "$" in str(val) or (k > 2 and columnas[k-2] and "$" in str(columnas[k-2])):
-                    c.number_format = '$#,##0.00'
-                else:
-                    c.number_format = '#,##0.00'
-            except:
-                c.value = val
-            c.fill = fill(V_PALE_GREEN if is_even else V_WHITE)
-            c.font = Font(size=10, color=V_DARK_GRAY, name="Calibri")
-            c.alignment = align("center")
-            c.border = border_thin()
-            ws.row_dimensions[row].height = 18
+    # Headers columnas
+    HR = 6
+    ws.row_dimensions[HR].height = 28
+    for j, h in enumerate(columnas, 1):
+        c = ws.cell(row=HR, column=j)
+        c.value = h
+        c.font = Font(name='Calibri', size=11, bold=True, color=BLANCO)
+        c.fill = fill(AZUL_H)
+        c.alignment = align('center')
+        c.border = border()
 
-    # Fila de totales
-    if totales and len(totales) == len(columnas):
-        tot_row = len(filas) + 5
-        ws.row_dimensions[tot_row].height = 22
-        for k, val in enumerate(totales, start=2):
-            c = ws.cell(row=tot_row, column=k)
+    # Detectar columnas numéricas
+    num_cols = set()
+    for j in range(1, len(columnas)+1):
+        if any(isinstance(f[j-1], (int, float)) for f in filas if j-1 < len(f)):
+            num_cols.add(j)
+
+    # Filas de datos
+    DS = HR + 1
+    for i, fila in enumerate(filas):
+        r = DS + i
+        ws.row_dimensions[r].height = 20
+        bg = VERDE_XL if i % 2 == 1 else BLANCO
+        for j, val in enumerate(fila, 1):
+            c = ws.cell(row=r, column=j)
             c.value = val
-            c.font = Font(bold=True, size=10, color=V_WHITE, name="Calibri")
-            c.fill = fill(V_DARK_GREEN)
-            c.alignment = align("center")
-            c.border = border_thin()
+            c.font = Font(name='Calibri', size=10)
+            c.fill = fill(bg)
+            c.border = border()
+            if isinstance(val, (int, float)):
+                c.alignment = align('right', wrap=False)
+                if j in num_cols:
+                    if isinstance(val, float) and abs(val) < 1 and val != 0:
+                        c.number_format = '0.00%'
+                    else:
+                        c.number_format = '#,##0.00'
+            else:
+                c.alignment = align('left')
+
+    # Fila totales
+    if totales:
+        tr = DS + len(filas) + 1
+        ws.row_dimensions[tr].height = 24
+        for j, val in enumerate(totales, 1):
+            c = ws.cell(row=tr, column=j)
+            c.value = val
+            c.font = Font(name='Calibri', size=11, bold=True, color=BLANCO)
+            c.fill = fill(VERDE_MED)
+            c.alignment = align('center')
+            c.border = border()
 
     # Gráfica
-    if tipo_grafica and filas and len(columnas) >= 2:
-        data_start = 5
-        data_end = len(filas) + 4
-        num_cols = len(columnas)
+    if tipo_graf and len(filas) >= 2 and len(columnas) >= 2:
+        try:
+            val_cols = [j for j in range(2, min(len(columnas)+1, 6))
+                        if any(isinstance(f[j-1], (int, float)) for f in filas if j-1 < len(f))]
+            if not val_cols:
+                return
 
-        if tipo_grafica == "bar":
-            chart = BarChart()
-            chart.type = "col"
-            chart.grouping = "clustered"
-            chart.overlap = -10
-        elif tipo_grafica == "line":
-            chart = LineChart()
-        elif tipo_grafica == "pie":
-            chart = PieChart()
-        elif tipo_grafica == "bar_stacked":
-            chart = BarChart()
-            chart.type = "col"
-            chart.grouping = "stacked"
-        else:
-            chart = BarChart()
-            chart.type = "col"
-            chart.grouping = "clustered"
+            if tipo_graf == "bar":
+                chart = BarChart()
+                chart.type = "col"
+                chart.grouping = "clustered"
+                chart.style = 10
+            elif tipo_graf == "line":
+                chart = LineChart()
+                chart.style = 10
+            elif tipo_graf == "pie":
+                chart = PieChart()
+                chart.style = 10
+            else:
+                chart = BarChart()
+                chart.type = "col"
+                chart.style = 10
 
-        chart.title = nombre.replace("📈", "").replace("📊", "").strip()
-        chart.style = 10
-        chart.height = 14
-        chart.width = 24
+            chart.title = nombre
+            chart.width = 22
+            chart.height = 14
 
-        # Categorías (primera columna de datos)
-        cats = Reference(ws, min_col=2, min_row=data_start, max_row=data_end)
+            if tipo_graf in ["bar", "line"]:
+                for vc in val_cols[:3]:
+                    dr = Reference(ws, min_col=vc, min_row=HR, max_col=vc, max_row=HR+len(filas))
+                    chart.add_data(dr, titles_from_data=True)
+                cats = Reference(ws, min_col=1, min_row=DS, max_row=DS+len(filas)-1)
+                chart.set_categories(cats)
+                if hasattr(chart, 'y_axis'):
+                    chart.y_axis.title = columnas[val_cols[0]-1] if val_cols else ""
+                    chart.x_axis.title = columnas[0]
+            elif tipo_graf == "pie" and val_cols:
+                dr = Reference(ws, min_col=val_cols[0], min_row=HR, max_col=val_cols[0], max_row=HR+len(filas))
+                chart.add_data(dr, titles_from_data=True)
+                cats = Reference(ws, min_col=1, min_row=DS, max_row=DS+len(filas)-1)
+                chart.set_categories(cats)
 
-        # Series numéricas
-        added = 0
-        for col_idx in range(3, num_cols + 2):
-            try:
-                data_ref = Reference(ws, min_col=col_idx, min_row=4, max_row=data_end)
-                series = chart.series.__class__()
-                chart.add_data(data_ref, titles_from_data=True)
-                added += 1
-                if tipo_grafica == "pie":
-                    break
-            except:
-                pass
+            chart_row = DS + len(filas) + (3 if not totales else 4)
+            ws.add_chart(chart, f"A{chart_row}")
+        except Exception as e:
+            pass  # Si la gráfica falla, continuar sin ella
 
-        if added == 0:
-            data_ref = Reference(ws, min_col=3, min_row=4, max_row=data_end)
-            chart.add_data(data_ref, titles_from_data=True)
-
-        chart.set_categories(cats)
-
-        if tipo_grafica not in ("pie",):
-            chart.x_axis.title = columnas[0] if columnas else ""
-            chart.y_axis.title = columnas[1] if len(columnas) > 1 else "Valor"
-            chart.y_axis.numFmt = '#,##0'
-            chart.x_axis.tickLblSkip = 1
-
-        # Colores verde Vivatex para las series
-        vivatex_colors = ["1E6B2E", "6BBF3E", "4A9A20", "A3D977", "0D4A1E", "8ED050"]
-        for i, s in enumerate(chart.series):
-            color = vivatex_colors[i % len(vivatex_colors)]
-            s.graphicalProperties.solidFill = color
-            s.graphicalProperties.line.solidFill = color
-
-        chart_row = data_end + 3
-        ws.add_chart(chart, f"B{chart_row}")
-
-    return ws
-
-def generate_report(data_json):
-    data = json.loads(data_json) if isinstance(data_json, str) else data_json
+def generate(data):
     wb = Workbook()
+    wb.remove(wb.active)
 
-    titulo = data.get("titulo", "Reporte Vivatex")
-    subtitulo = data.get("subtitulo", "Reporte Ejecutivo")
-    empresa = data.get("empresa", "Grupo Vivatex S.A. de C.V.")
-    periodo = data.get("periodo", "2026")
-    confidencial = data.get("confidencial", "Confidencial · Uso Exclusivo de Dirección")
+    titulo    = data.get("titulo", "Reporte Vivatex")
+    usuario   = data.get("usuario", "Usuario")
+    periodo   = data.get("periodo", datetime.datetime.now().strftime("%B %Y"))
+    subtitulo = data.get("subtitulo", "")
 
-    # Portada
-    add_portada(wb, titulo, subtitulo, empresa, periodo, confidencial)
+    portada(wb, titulo, usuario, periodo, subtitulo)
 
-    # Resumen ejecutivo si viene
-    if "resumen" in data:
-        add_resumen_sheet(wb, data["resumen"])
-
-    # Hojas de datos
     for hoja in data.get("hojas", []):
-        add_data_sheet(wb, hoja)
+        hoja_datos(wb, hoja, titulo, usuario, periodo)
 
-    return wb
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf.read()
 
 if __name__ == "__main__":
-    if len(sys.argv) < 3:
-        print(json.dumps({"error": "Uso: generate_excel.py <json_data> <output_path>"}))
-        sys.exit(1)
     try:
-        data_json = sys.argv[1]
-        output_path = sys.argv[2]
-        wb = generate_report(data_json)
-        wb.save(output_path)
-        print(json.dumps({"success": True, "path": output_path}))
+        # El servidor manda los datos por stdin como JSON
+        raw = sys.stdin.read().strip()
+        data = json.loads(raw)
+        
+        # output_path puede venir como 2do argumento
+        output_path = sys.argv[1] if len(sys.argv) > 1 else None
+        
+        result = generate(data)
+        
+        if output_path:
+            with open(output_path, 'wb') as f:
+                f.write(result)
+            print(json.dumps({"success": True, "path": output_path}))
+        else:
+            print(base64.b64encode(result).decode())
     except Exception as e:
-        print(json.dumps({"error": str(e), "trace": traceback.format_exc()}))
+        print(json.dumps({"success": False, "error": str(e)}))
         sys.exit(1)
