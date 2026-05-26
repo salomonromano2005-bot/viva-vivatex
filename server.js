@@ -465,9 +465,19 @@ app.post('/api/chat', async (req, res) => {
       const sheetResults = [];
       
       // Palabras que indican que se necesitan datos de clientes/cartera
-      const clienteKeywords = ['cliente','clientes','cartera','cobrar','saldo','credito','crédito','deuda','vencido','antiguedad','antigüedad','cxc','cx','cobro','cobranza'];
-      const ventasKeywords = ['venta','ventas','vendedor','factura','facturación','ingreso','pedido','pedidos'];
-      const prodKeywords = ['produccion','producción','hilatura','tejido','acabado','merma','kg','kilogram'];
+      const clienteKeywords = ['cliente','clientes','cartera','cobrar','saldo','credito','deuda','vencido','antiguedad','cxc','cobranza','antigüedad'];
+      const ventasKeywords = ['venta','ventas','vendedor','factura','facturacion','ingreso','pedido','pedidos','facturacion_mensual','tabla_vendedores'];
+      const prodKeywords = ['produccion','hilatura','tejido','acabado','merma','kg'];
+      
+      // Mapeo directo de archivos conocidos
+      const fileKeyMap = {
+        'antiguedad_saldos_clientes': ['cliente','clientes','cartera','saldo','cobrar','credito','cobranza','antigüedad','antiguedad'],
+        'facturacion_mensual': ['venta','ventas','factura','facturacion','ingreso'],
+        'tabla_vendedores': ['vendedor','vendedores','venta','ventas'],
+        'cxp_proveedores': ['proveedor','proveedores','cxp','pagar','pago'],
+        'pedidos': ['pedido','pedidos','orden','ordenes'],
+        'inventario': ['inventario','stock','almacen','tela','producto'],
+      };
       
       const needsClientes = clienteKeywords.some(k => lastMsg.includes(k));
       const needsVentas = ventasKeywords.some(k => lastMsg.includes(k));
@@ -481,12 +491,21 @@ app.post('/api/chat', async (req, res) => {
           .normalize('NFD').replace(/[̀-ͯ]/g, '');
         
         // Detectar si este archivo es relevante por tipo
-        const isClienteFile = clienteKeywords.some(k => filenameLower.includes(k));
-        const isVentasFile = ventasKeywords.some(k => filenameLower.includes(k));
+        const keyLower = key.toLowerCase();
+        const isClienteFile = clienteKeywords.some(k => filenameLower.includes(k)) || 
+                              Object.entries(fileKeyMap).some(([fk, kws]) => keyLower.includes(fk) && kws.some(k => clienteKeywords.includes(k)));
+        const isVentasFile = ventasKeywords.some(k => filenameLower.includes(k)) ||
+                             Object.entries(fileKeyMap).some(([fk, kws]) => keyLower.includes(fk) && kws.some(k => ventasKeywords.includes(k)));
         const isProdFile = prodKeywords.some(k => filenameLower.includes(k));
         
+        // Verificar mapeo directo de archivo
+        const directMatch = Object.entries(fileKeyMap).some(([fk, kws]) => 
+          keyLower.includes(fk) && kws.some(k => lastMsg.includes(k))
+        );
+        
         // Incluir archivo si coincide con lo que se pregunta
-        const forceInclude = (needsClientes && isClienteFile) || 
+        const forceInclude = directMatch || 
+                             (needsClientes && isClienteFile) || 
                              (needsVentas && isVentasFile) || 
                              (needsProd && isProdFile);
         
