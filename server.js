@@ -497,13 +497,13 @@ app.post('/api/chat', async (req, res) => {
       // Índice de todas las hojas disponibles
       const sheetIndex = keys.map(k => {
         const c = cache[k];
-        return \`- \${c.filename} / \${c.sheet}: \${Array.isArray(c.data) ? c.data.length : '?'} registros\`;
+        return `- ${c.filename} / ${c.sheet}: ${Array.isArray(c.data) ? c.data.length : '?'} registros`;
       }).join('\n');
       
       if (selectedSheets.length > 0) {
-        qadContext = \`\n\nDATOS QAD (\${new Date().toLocaleString('es-MX')}):\nHojas disponibles:\n\${sheetIndex}\n\nDatos relevantes para tu consulta:\n\${selectedSheets.join('\n')}\`;
+        qadContext = `\n\nDATOS QAD (${new Date().toLocaleString('es-MX')}):\nHojas disponibles:\n${sheetIndex}\n\nDatos relevantes para tu consulta:\n${selectedSheets.join('\n')}`;
       } else {
-        qadContext = \`\n\nDatos disponibles en QAD (\${keys.length} hojas):\n\${sheetIndex}\n\nNota: Los datos son muy grandes. Haz una pregunta más específica para ver los registros.\`;
+        qadContext = `\n\nDatos disponibles en QAD (${keys.length} hojas):\n${sheetIndex}\n\nNota: Los datos son muy grandes. Haz una pregunta más específica para ver los registros.`;
       }
     }
 
