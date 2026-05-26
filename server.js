@@ -601,8 +601,10 @@ app.post('/api/chat', async (req, res) => {
     // Debug: log what data is being sent
     const dataSize = qadContext.length;
     const sheetsIncluded = (qadContext.match(/###/g) || []).length;
-    console.log(`Chat request: user="${username}" keywords found, qadContext=${dataSize} chars, ${sheetsIncluded} sheets included`);
-    if(dataSize < 100) console.log('WARNING: Very little QAD data sent to AI!', qadContext);
+    console.log(`Chat request: user="${username}" qadContext=${dataSize} chars, ${sheetsIncluded} sheets included`);
+    if(dataSize < 100) console.log('WARNING: Very little QAD data!', qadContext);
+    // Log first 500 chars of QAD context to verify format
+    console.log('QAD context preview:', qadContext.substring(0, 500));
     
     const fullSystem = system + qadContext + permContext;
 
