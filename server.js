@@ -160,33 +160,6 @@ app.delete('/api/usuarios/:username', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// ===== ENDPOINT SUBIDA PDF =====
-app.post('/api/qad/upload-pdf', upload.single('pdf'), async (req, res) => {
-  if(!req.file) return res.status(400).json({ error: 'No se recibió archivo PDF' });
-  try {
-    const key = `pdf_${req.file.originalname}_${Date.now()}`;
-    const entry = {
-      filename: req.file.originalname,
-      sheet: 'PDF',
-      data: `[Archivo PDF: ${req.file.originalname} - ${Math.round(req.file.size/1024)}KB]`,
-      updatedAt: new Date().toISOString()
-    };
-    qadDataCache[key] = entry;
-    if(pool){
-      await pool.query(
-        `INSERT INTO qad_data (sheet_key, filename, sheet_name, data, updated_at)
-         VALUES ($1,$2,$3,$4,NOW())
-         ON CONFLICT (sheet_key) DO UPDATE SET data=$4, updated_at=NOW()`,
-        [key, entry.filename, 'PDF', JSON.stringify(entry.data)]
-      );
-    }
-    res.json({ ok: true, message: `PDF "${req.file.originalname}" recibido` });
-  } catch(e){
-    console.error('Error PDF:', e);
-    res.status(500).json({ error: e.message });
-  }
-});
-
 // Guardar datos QAD en DB
 async function saveQADToDB(key, filename, sheetName, data) {
   if (!pool) return;
@@ -295,6 +268,31 @@ app.post('/api/qad/upload', upload.array('files', 20), async (req, res) => {
 });
 
 // ---- Estado QAD ----
+// ===== ENDPOINT SUBIDA PDF =====
+app.post('/api/qad/upload-pdf', upload.single('pdf'), async (req, res) => {
+  if(!req.file) return res.status(400).json({ error: 'No se recibio archivo PDF' });
+  try {
+    const key = 'pdf_' + req.file.originalname + '_' + Date.now();
+    const entry = {
+      filename: req.file.originalname,
+      sheet: 'PDF',
+      data: '[Archivo PDF: ' + req.file.originalname + ' - ' + Math.round(req.file.size/1024) + 'KB]',
+      updatedAt: new Date().toISOString()
+    };
+    qadDataCache[key] = entry;
+    if(pool){
+      await pool.query(
+        'INSERT INTO qad_data (sheet_key, filename, sheet_name, data, updated_at) VALUES ($1,$2,$3,$4,NOW()) ON CONFLICT (sheet_key) DO UPDATE SET data=$4, updated_at=NOW()',
+        [key, entry.filename, 'PDF', JSON.stringify(entry.data)]
+      );
+    }
+    res.json({ ok: true, message: 'PDF recibido: ' + req.file.originalname });
+  } catch(e){
+    console.error('Error PDF:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/qad/status', async (req, res) => {
   const cache = pool ? await loadQADFromDB() : qadDataCache;
   const keys = Object.keys(cache);
