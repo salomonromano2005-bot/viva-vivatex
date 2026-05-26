@@ -464,33 +464,57 @@ app.post('/api/chat', async (req, res) => {
       // Para cada hoja, buscar filas que coincidan con las palabras clave
       const sheetResults = [];
       
+      // Palabras que indican que se necesitan datos de clientes/cartera
+      const clienteKeywords = ['cliente','clientes','cartera','cobrar','saldo','credito','crédito','deuda','vencido','antiguedad','antigüedad','cxc','cx','cobro','cobranza'];
+      const ventasKeywords = ['venta','ventas','vendedor','factura','facturación','ingreso','pedido','pedidos'];
+      const prodKeywords = ['produccion','producción','hilatura','tejido','acabado','merma','kg','kilogram'];
+      
+      const needsClientes = clienteKeywords.some(k => lastMsg.includes(k));
+      const needsVentas = ventasKeywords.some(k => lastMsg.includes(k));
+      const needsProd = prodKeywords.some(k => lastMsg.includes(k));
+
       keys.forEach(key => {
         const c = cache[key];
         if (!Array.isArray(c.data) || c.data.length === 0) return;
         
+        const filenameLower = (c.filename + ' ' + c.sheet).toLowerCase()
+          .normalize('NFD').replace(/[̀-ͯ]/g, '');
+        
+        // Detectar si este archivo es relevante por tipo
+        const isClienteFile = clienteKeywords.some(k => filenameLower.includes(k));
+        const isVentasFile = ventasKeywords.some(k => filenameLower.includes(k));
+        const isProdFile = prodKeywords.some(k => filenameLower.includes(k));
+        
+        // Incluir archivo si coincide con lo que se pregunta
+        const forceInclude = (needsClientes && isClienteFile) || 
+                             (needsVentas && isVentasFile) || 
+                             (needsProd && isProdFile);
+        
         // Buscar coincidencias en los datos
         let matchingRows = [];
-        let headerRows = c.data.slice(0, 2); // Siempre incluir primeras 2 filas (encabezados)
+        let headerRows = c.data.slice(0, 2);
         
-        if (keywords.length > 0) {
+        const msgNorm = lastMsg.normalize('NFD').replace(/[̀-ͯ]/g, '');
+        const kwNorm = keywords.map(k => k.normalize('NFD').replace(/[̀-ͯ]/g, ''));
+        
+        if (keywords.length > 0 || forceInclude) {
           matchingRows = c.data.filter((row, idx) => {
-            if (idx < 2) return false; // Skip headers
+            if (idx < 2) return false;
             const rowStr = JSON.stringify(row).toLowerCase()
-              .normalize('NFD').replace(/[\u0300-\u036f]/g, ''); // Normalize accents
-            const msgNorm = lastMsg.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-            const kwNorm = keywords.map(k => k.normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
-            return kwNorm.some(kw => rowStr.includes(kw));
+              .normalize('NFD').replace(/[̀-ͯ]/g, '');
+            return kwNorm.some(kw => rowStr.includes(kw)) || forceInclude;
           });
         }
         
-        // Combinar: encabezados + coincidencias + muestra general
-        const generalSample = c.data.slice(0, 5);
-        const combined = [...headerRows, ...matchingRows.slice(0, 80), ...generalSample]
+        // Si forceInclude, tomar todos los datos (hasta 100 filas)
+        const limit = forceInclude ? 100 : 80;
+        const generalSample = c.data.slice(0, forceInclude ? 10 : 5);
+        const combined = [...headerRows, ...matchingRows.slice(0, limit), ...generalSample]
           .filter((v, i, arr) => arr.findIndex(x => JSON.stringify(x) === JSON.stringify(v)) === i)
-          .slice(0, 100);
+          .slice(0, forceInclude ? 120 : 100);
         
-        const hasMatches = matchingRows.length > 0;
-        const score = hasMatches ? matchingRows.length : 0;
+        const hasMatches = matchingRows.length > 0 || forceInclude;
+        const score = forceInclude ? 1000 : (hasMatches ? matchingRows.length : 0);
         
         sheetResults.push({
           key, score, hasMatches,
