@@ -598,6 +598,12 @@ app.post('/api/chat', async (req, res) => {
       permContext = `\n\nACCESOS HABILITADOS PARA ESTE USUARIO:\n- Ventas de TODOS los vendedores, producción, pedidos con y sin cliente, almacén de tela acabada y bodega`;
     }
 
+    // Debug: log what data is being sent
+    const dataSize = qadContext.length;
+    const sheetsIncluded = (qadContext.match(/###/g) || []).length;
+    console.log(`Chat request: user="${username}" keywords found, qadContext=${dataSize} chars, ${sheetsIncluded} sheets included`);
+    if(dataSize < 100) console.log('WARNING: Very little QAD data sent to AI!', qadContext);
+    
     const fullSystem = system + qadContext + permContext;
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
