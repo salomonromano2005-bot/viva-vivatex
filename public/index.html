@@ -1,638 +1,1936 @@
-const express = require('express');
-const path = require('path');
-const fs = require('fs');
-const multer = require('multer');
-const xlsx = require('xlsx');
-const { Pool } = require('pg');
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="theme-color" content="#1a1f16">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="AVIVA">
+<meta name="application-name" content="AVIVA Vivatex">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<title>AVIVA — Asistente Inteligente Vivatex</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Sora:wght@400;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+<style>
+:root {
+  --green: #6BBF3E;
+  --green-d: #4a9a20;
+  --green-dd: #2d6010;
+  --green-l: #e8f5df;
+  --green-xl: #f4faf0;
+  --gray-dark: #1a1f16;
+  --gray-mid: #2a3322;
+  --sidebar-w: 270px;
+  --radius: 16px;
+  --radius-sm: 10px;
+  --shadow: 0 4px 24px rgba(0,0,0,0.09);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;background:#f0f4ec;color:#1c2217;}
 
-const app = express();
-app.use(express.json({ limit: '50mb' }));
-// Servir archivos estáticos sin caché para siempre tener la versión más reciente
-app.use((req, res, next) => {
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-  res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
-  next();
-});
-app.use(express.static(path.join(__dirname, 'public')));
+/* ====== LOGIN ====== */
+#loginScreen{
+  position:fixed;inset:0;background:linear-gradient(145deg,#111610 0%,#1e2b17 55%,#162210 100%);
+  display:flex;align-items:center;justify-content:center;z-index:999;
+}
+.login-grid{
+  position:absolute;inset:0;opacity:0.04;
+  background-image:
+    repeating-linear-gradient(0deg,transparent,transparent 48px,#6BBF3E 48px,#6BBF3E 49px),
+    repeating-linear-gradient(90deg,transparent,transparent 48px,#6BBF3E 48px,#6BBF3E 49px);
+}
+.login-glow{
+  position:absolute;width:600px;height:600px;border-radius:50%;
+  background:radial-gradient(circle,rgba(107,191,62,0.12) 0%,transparent 70%);
+  top:50%;left:50%;transform:translate(-50%,-50%);
+}
+.login-card{
+  background:#fff;border-radius:24px;padding:52px 44px 40px;width:420px;max-width:92vw;
+  position:relative;z-index:1;box-shadow:0 32px 80px rgba(0,0,0,0.4);
+}
+.login-logo{text-align:center;margin-bottom:12px;}
+.login-logo img{height:72px;object-fit:contain;}
+.login-brand{text-align:center;margin-bottom:8px;}
+.login-brand .viva{font-family:'Sora',sans-serif;font-size:42px;font-weight:700;color:var(--green);letter-spacing:-2px;line-height:1;}
+.login-brand .by{font-size:12px;color:#aab0a4;letter-spacing:3px;text-transform:uppercase;margin-top:4px;}
+.login-line{width:36px;height:3px;background:var(--green);border-radius:2px;margin:16px auto 28px;}
+.login-label{font-size:12px;font-weight:500;color:#6a7060;letter-spacing:0.6px;text-transform:uppercase;margin-bottom:7px;display:block;}
+.login-input{
+  width:100%;padding:13px 16px;border:1.5px solid #e0e8d8;border-radius:10px;
+  font-size:15px;font-family:'Outfit',sans-serif;background:#fafcf8;color:#1c2217;
+  transition:all 0.2s;outline:none;margin-bottom:16px;
+}
+.login-input:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(107,191,62,0.14);background:#fff;}
+.login-btn{
+  width:100%;padding:14px;background:var(--green);border:none;border-radius:10px;
+  color:#fff;font-size:16px;font-weight:600;font-family:'Outfit',sans-serif;
+  cursor:pointer;transition:all 0.2s;margin-top:4px;letter-spacing:0.3px;
+}
+.login-btn:hover{background:var(--green-d);}
+.login-btn:active{transform:scale(0.98);}
+.login-err{
+  background:#fef2f2;border:1px solid #fecaca;color:#dc2626;
+  padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:14px;display:none;
+}
+.login-footer{text-align:center;font-size:12px;color:#bbc2b4;margin-top:24px;}
 
-// ============================================================
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
-const PORT = process.env.PORT || 3000;
-const DATABASE_URL = process.env.DATABASE_URL || '';
-// ============================================================
+/* ====== APP SHELL ====== */
+#appScreen{display:none;height:100vh;flex-direction:row;}
+#appScreen.active{display:flex;}
 
-// Base de datos PostgreSQL
-let pool = null;
+/* ====== SIDEBAR ====== */
+.sidebar{
+  width:var(--sidebar-w);min-width:var(--sidebar-w);background:var(--gray-dark);
+  display:flex;flex-direction:column;height:100vh;
+  transition:transform 0.3s;
+}
+.sidebar-logo{padding:22px 20px 16px;border-bottom:1px solid rgba(255,255,255,0.07);}
+.sidebar-logo img{height:44px;object-fit:contain;filter:brightness(1.1);}
+.sidebar-logo-text{margin-left:12px;display:inline-block;vertical-align:middle;}
+.sidebar-logo-text .v{font-family:'Sora',sans-serif;font-size:22px;font-weight:700;color:var(--green);letter-spacing:-1px;}
+.sidebar-logo-text .s{font-size:10px;color:rgba(255,255,255,0.4);letter-spacing:2px;display:block;text-transform:uppercase;}
+.sidebar-user{
+  padding:14px 16px;margin:14px 12px 6px;border-radius:10px;
+  background:rgba(107,191,62,0.1);border:1px solid rgba(107,191,62,0.2);
+}
+.sidebar-user .su-name{font-size:13px;font-weight:600;color:rgba(255,255,255,0.9);}
+.sidebar-user .su-role{font-size:11px;color:var(--green);margin-top:2px;}
+.sidebar-section{padding:16px 12px 4px;}
+.sidebar-section-title{font-size:10px;color:rgba(255,255,255,0.3);text-transform:uppercase;letter-spacing:2px;padding:0 6px;}
+.sidebar-btn{
+  display:flex;align-items:center;gap:10px;width:100%;padding:11px 14px;border:none;
+  background:transparent;border-radius:8px;color:rgba(255,255,255,0.65);
+  font-size:13px;font-family:'Outfit',sans-serif;cursor:pointer;transition:all 0.15s;
+  text-align:left;margin-bottom:2px;
+}
+.sidebar-btn:hover{background:rgba(255,255,255,0.07);color:rgba(255,255,255,0.9);}
+.sidebar-btn.active{background:rgba(107,191,62,0.15);color:var(--green);}
+.sidebar-btn svg{width:16px;height:16px;flex-shrink:0;opacity:0.8;}
+.sidebar-spacer{flex:1;}
+.sidebar-new-chat{
+  margin:0 12px 8px;padding:11px;background:var(--green);border:none;border-radius:10px;
+  color:#fff;font-size:13px;font-weight:600;font-family:'Outfit',sans-serif;
+  cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:8px;
+}
+.sidebar-new-chat:hover{background:var(--green-d);}
+.sidebar-logout{
+  margin:0 12px 16px;padding:10px;background:transparent;border:1px solid rgba(255,255,255,0.1);
+  border-radius:10px;color:rgba(255,255,255,0.45);font-size:13px;font-family:'Outfit',sans-serif;
+  cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:8px;
+}
+.sidebar-logout:hover{background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.7);}
+.history-list{overflow-y:auto;max-height:200px;padding:0 12px;}
+.history-item{
+  padding:9px 12px;border-radius:8px;cursor:pointer;font-size:12px;color:rgba(255,255,255,0.55);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:all 0.15s;margin-bottom:2px;
+}
+.history-item:hover{background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.8);}
+.history-item{display:flex;align-items:center;gap:4px;}
 
-async function initDB() {
-  if (!DATABASE_URL) {
-    console.log('⚠️  Sin DATABASE_URL — usando memoria (datos no persisten)');
-    return;
-  }
-  try {
-    pool = new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false } });
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS qad_data (
-        id SERIAL PRIMARY KEY,
-        sheet_key VARCHAR(255) UNIQUE NOT NULL,
-        filename VARCHAR(500),
-        sheet_name VARCHAR(255),
-        data JSONB,
-        updated_at TIMESTAMP DEFAULT NOW()
-      );
-    `);
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS conversations (
-        id SERIAL PRIMARY KEY,
-        username VARCHAR(100) NOT NULL,
-        conv_id VARCHAR(100) NOT NULL,
-        title VARCHAR(500),
-        messages JSONB DEFAULT '[]',
-        created_at TIMESTAMP DEFAULT NOW(),
-        updated_at TIMESTAMP DEFAULT NOW(),
-        UNIQUE(username, conv_id)
-      );
-    `);
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS usuarios (
-        id SERIAL PRIMARY KEY,
-        username VARCHAR(100) UNIQUE NOT NULL,
-        password VARCHAR(255) NOT NULL,
-        role VARCHAR(50) DEFAULT 'user',
-        active BOOLEAN DEFAULT true,
-        created_at TIMESTAMP DEFAULT NOW()
-      );
-    `);
-    // Insertar usuarios base si no existen
-    const baseUsers = [
-      {username:'JRZ123',           password:'JACOBOrz4646',     role:'user'},
-      {username:'JRR234',           password:'JACOBOrr8989',     role:'user'},
-      {username:'SRR456',           password:'SIMONrr0202',      role:'user'},
-      {username:'SRB0707',          password:'SALOrb0909',       role:'user'},
-      {username:'SISTEMAS1900',     password:'SISTEMASviva2026', role:'admin'},
-      {username:'LEO2026',          password:'LEOg1986',         role:'user'},
-      {username:'ISMAEL_VENTAS',    password:'Vivatex2026',      role:'user'},
-      {username:'ISRAEL_ACABADO',   password:'Vivatex2026',      role:'user'},
-      {username:'MEMO_TEJIDO',      password:'Vivatex2026',      role:'user'},
-      {username:'CARLOSM_H',        password:'Vivatex2026',      role:'user'},
-      {username:'MARTIN_CONTA',     password:'Vivatex2026',      role:'user'},
-      {username:'VENTAS_MONICA',    password:'Vivatex2026',      role:'user'},
-      {username:'VENTAS_EDGAR',     password:'Vivatex2026',      role:'user'},
-      {username:'VENTAS_AMELIA',    password:'Vivatex2026',      role:'user'},
-      {username:'VENTAS_JORGE',     password:'Vivatex2026',      role:'user'},
-      {username:'GTE_ACABADO',      password:'Vivatex2026',      role:'user'},
-      {username:'GTE_TEJIDO',       password:'Vivatex2026',      role:'user'},
-      {username:'GTE_HILATURA',     password:'Vivatex2026',      role:'user'},
-      {username:'COBRANZA_CLAUDIA', password:'Vivatex2026',      role:'user'},
-      {username:'COBRANZA_OLIVIA',  password:'Vivatex2026',      role:'user'},
-      {username:'ADMON_LUCY',       password:'Vivatex2026',      role:'user'},
-    ];
-    for(const u of baseUsers){
-      await pool.query(`
-        INSERT INTO usuarios (username, password, role, active)
-        VALUES ($1, $2, $3, true)
-        ON CONFLICT (username) DO NOTHING
-      `, [u.username, u.password, u.role]);
-    }
-    console.log('✅ Base de datos PostgreSQL conectada');
-  } catch (e) {
-    console.error('❌ Error conectando DB:', e.message);
-    pool = null;
-  }
+/* ====== MAIN CHAT ====== */
+.main-area{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;}
+.chat-topbar{
+  padding:16px 24px;border-bottom:1px solid #e4eade;background:#fff;
+  display:flex;align-items:center;justify-content:space-between;flex-shrink:0;
+}
+.chat-topbar-left{display:flex;align-items:center;gap:12px;}
+.chat-topbar-title{font-family:'Sora',sans-serif;font-size:18px;font-weight:600;color:#1c2217;}
+.chat-topbar-status{display:flex;align-items:center;gap:6px;font-size:12px;color:#6a7060;}
+.status-dot{width:7px;height:7px;border-radius:50%;background:var(--green);animation:pulse 2s infinite;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.4;}}
+.chat-topbar-actions{display:flex;gap:8px;}
+.topbar-btn{
+  padding:7px 14px;border:1.5px solid #d4e0c8;border-radius:8px;background:#fff;
+  color:#5a6a50;font-size:12px;font-weight:500;font-family:'Outfit',sans-serif;cursor:pointer;
+  transition:all 0.15s;display:flex;align-items:center;gap:6px;
+}
+.topbar-btn:hover{background:var(--green-l);border-color:var(--green);color:var(--green-d);}
+.topbar-btn svg{width:14px;height:14px;}
+.mobile-menu-btn{display:none;background:none;border:none;cursor:pointer;padding:4px;}
+
+.chat-messages{flex:1;overflow-y:auto;padding:32px 24px;display:flex;flex-direction:column;gap:24px;}
+.chat-messages::-webkit-scrollbar{width:4px;}
+.chat-messages::-webkit-scrollbar-track{background:transparent;}
+.chat-messages::-webkit-scrollbar-thumb{background:#d0dbc8;border-radius:4px;}
+
+/* Welcome screen */
+.welcome-screen{
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:40px 24px;text-align:center;
+}
+.welcome-icon{
+  width:80px;height:80px;background:var(--green-l);border-radius:50%;
+  display:flex;align-items:center;justify-content:center;margin-bottom:20px;
+}
+.welcome-icon img{height:48px;object-fit:contain;}
+.welcome-title{font-family:'Sora',sans-serif;font-size:28px;font-weight:700;color:#1c2217;margin-bottom:8px;}
+.welcome-title span{color:var(--green);}
+.welcome-sub{font-size:15px;color:#7a8670;max-width:440px;line-height:1.6;margin-bottom:36px;}
+.welcome-chips{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;max-width:560px;}
+.chip{
+  padding:10px 18px;background:#fff;border:1.5px solid #d8e8cc;border-radius:50px;
+  font-size:13px;color:#4a6038;cursor:pointer;transition:all 0.2s;font-weight:500;
+}
+.chip:hover{background:var(--green-l);border-color:var(--green);color:var(--green-d);}
+
+/* Messages */
+.msg{display:flex;gap:12px;animation:msgIn 0.25s ease;}
+@keyframes msgIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+.msg.user{flex-direction:row-reverse;}
+.msg-avatar{
+  width:36px;height:36px;border-radius:50%;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;
+}
+.msg.assistant .msg-avatar{background:var(--green-l);color:var(--green-d);}
+.msg.user .msg-avatar{background:#e8f0ff;color:#3b5bdb;}
+.msg-bubble{max-width:70%;padding:14px 18px;border-radius:18px;font-size:15px;line-height:1.65;}
+.msg.assistant .msg-bubble{background:#fff;border:1px solid #e4eade;border-bottom-left-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,0.05);}
+.msg.user .msg-bubble{background:var(--green);color:#fff;border-bottom-right-radius:4px;}
+.msg-bubble p{margin-bottom:8px;}
+.msg-bubble p:last-child{margin-bottom:0;}
+.msg-bubble strong{font-weight:600;}
+.msg-bubble table{border-collapse:collapse;width:100%;font-size:13px;margin:10px 0;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.07);}
+.msg-bubble th{background:#1E6B2E;color:#fff;padding:10px 14px;text-align:left;font-weight:600;font-size:12px;letter-spacing:0.3px;}
+.msg-bubble td{padding:8px 14px;border-bottom:1px solid #e4eed8;color:#2d2d2d;font-size:13px;}
+.msg-bubble tr:nth-child(even) td{background:#f5faf3;}
+.msg-bubble tr:hover td{background:#edf7e8;}
+.msg-bubble tr:last-child td{border-bottom:none;}
+.chart-container{background:#fff;border:1px solid #e4eade;border-radius:12px;padding:16px;margin:12px 0;box-shadow:0 2px 10px rgba(0,0,0,0.06);}
+.chart-container canvas{max-height:320px;}
+.chart-title{font-size:13px;font-weight:700;color:#1E6B2E;margin-bottom:10px;text-align:center;letter-spacing:0.3px;}
+.chart-type-btns{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;}
+.chart-type-btn{background:#f0f7e8;border:1px solid #c8e6b0;color:#1E6B2E;border-radius:6px;padding:3px 10px;font-size:11px;font-weight:600;cursor:pointer;transition:all .2s;}
+.chart-type-btn.active{background:#1E6B2E;color:#fff;border-color:#1E6B2E;}
+.chart-type-btn:hover{background:#6BBF3E;color:#fff;border-color:#6BBF3E;}
+.msg-time{font-size:11px;color:#aab4a0;margin-top:6px;text-align:right;}
+.msg.user .msg-time{color:rgba(255,255,255,0.6);}
+
+/* Typing indicator */
+.typing-indicator{display:flex;gap:5px;padding:14px 18px;background:#fff;border:1px solid #e4eade;border-radius:18px;border-bottom-left-radius:4px;width:fit-content;box-shadow:0 2px 8px rgba(0,0,0,0.05);}
+.typing-dot{width:7px;height:7px;border-radius:50%;background:#aac090;animation:typingBounce 1.2s infinite;}
+.typing-dot:nth-child(2){animation-delay:0.2s;}
+.typing-dot:nth-child(3){animation-delay:0.4s;}
+@keyframes typingBounce{0%,60%,100%{transform:translateY(0);}30%{transform:translateY(-8px);}}
+
+/* Input area */
+.chat-input-area{
+  padding:16px 24px 20px;background:#fff;border-top:1px solid #e4eade;flex-shrink:0;
+}
+.chat-input-wrap{
+  display:flex;align-items:flex-end;gap:10px;background:#f6faf2;
+  border:1.5px solid #d4e0c8;border-radius:16px;padding:10px 12px;
+  transition:border-color 0.2s;
+}
+.chat-input-wrap:focus-within{border-color:var(--green);box-shadow:0 0 0 3px rgba(107,191,62,0.1);}
+#msgInput{
+  flex:1;background:transparent;border:none;outline:none;resize:none;
+  font-size:15px;font-family:'Outfit',sans-serif;color:#1c2217;max-height:160px;
+  min-height:24px;line-height:1.5;padding:2px 0;
+}
+#msgInput::placeholder{color:#a0ac96;}
+.attach-btn{background:none;border:none;cursor:pointer;padding:6px 8px;color:#6BBF3E;display:flex;align-items:center;border-radius:8px;transition:background 0.15s;}
+.attach-btn:hover{background:#e8f5df;}
+.attach-btn svg{width:20px;height:20px;}
+.attach-btn.mic-active{color:#e53e3e;animation:pulse 1s infinite;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.5;}}
+.send-btn{
+  width:38px;height:38px;background:var(--green);border:none;border-radius:10px;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;
+  transition:all 0.15s;
+}
+.send-btn:hover{background:var(--green-d);}
+.send-btn:active{transform:scale(0.94);}
+.send-btn:disabled{background:#cde8b8;cursor:not-allowed;}
+.send-btn svg{width:18px;height:18px;color:#fff;}
+.input-hint{font-size:11px;color:#a0ac96;text-align:center;margin-top:8px;}
+
+/* ====== ADMIN PANEL ====== */
+#adminPanel{display:none;flex:1;flex-direction:column;overflow:hidden;}
+#adminPanel.active{display:flex;}
+.admin-topbar{
+  padding:16px 28px;border-bottom:1px solid #e4eade;background:#fff;
+  display:flex;align-items:center;justify-content:space-between;flex-shrink:0;
+}
+.admin-topbar-title{font-family:'Sora',sans-serif;font-size:18px;font-weight:600;color:#1c2217;}
+.admin-body{flex:1;overflow-y:auto;padding:28px;}
+.admin-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:28px;}
+.stat-card{
+  background:#fff;border-radius:14px;padding:20px 22px;border:1px solid #e4eade;
+  box-shadow:0 2px 12px rgba(0,0,0,0.04);
+}
+.stat-card .sc-label{font-size:12px;color:#7a8670;font-weight:500;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:8px;}
+.stat-card .sc-value{font-size:28px;font-weight:700;color:#1c2217;font-family:'Sora',sans-serif;}
+.stat-card .sc-sub{font-size:12px;color:var(--green);margin-top:4px;}
+.admin-section{background:#fff;border-radius:14px;border:1px solid #e4eade;margin-bottom:20px;overflow:hidden;}
+.admin-section-head{
+  padding:16px 22px;border-bottom:1px solid #e8f0e0;display:flex;align-items:center;
+  justify-content:space-between;
+}
+.admin-section-head h3{font-size:15px;font-weight:600;color:#1c2217;}
+.admin-section-body{padding:20px 22px;}
+.users-table{width:100%;border-collapse:collapse;font-size:14px;}
+.users-table th{text-align:left;padding:10px 14px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.6px;color:#7a8670;border-bottom:1px solid #e8f0e0;}
+.users-table td{padding:12px 14px;border-bottom:1px solid #f2f7ee;color:#2a3422;}
+.users-table tr:last-child td{border-bottom:none;}
+.users-table tr:hover td{background:#fafdf6;}
+.badge{padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;}
+.badge-green{background:#e8f5df;color:#2d7a10;}
+.badge-gray{background:#f0f0ee;color:#6a7060;}
+.badge-blue{background:#e8f0ff;color:#2d4adb;}
+.action-btn{
+  padding:6px 12px;border-radius:7px;border:1.5px solid #d4e0c8;background:#fff;
+  font-size:12px;font-weight:500;cursor:pointer;color:#4a6038;transition:all 0.15s;
+  font-family:'Outfit',sans-serif;margin-right:6px;
+}
+.action-btn:hover{background:var(--green-l);border-color:var(--green);}
+.action-btn.danger{border-color:#fca5a5;color:#dc2626;}
+.action-btn.danger:hover{background:#fef2f2;}
+.admin-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.admin-form-field{display:flex;flex-direction:column;gap:6px;}
+.admin-form-field label{font-size:12px;font-weight:500;color:#6a7060;text-transform:uppercase;letter-spacing:0.5px;}
+.admin-form-field input, .admin-form-field select{
+  padding:10px 14px;border:1.5px solid #d4e0c8;border-radius:8px;font-size:14px;
+  font-family:'Outfit',sans-serif;background:#fafcf8;color:#1c2217;outline:none;transition:all 0.2s;
+}
+.admin-form-field input:focus, .admin-form-field select:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(107,191,62,0.1);}
+.admin-save-btn{
+  padding:10px 24px;background:var(--green);border:none;border-radius:8px;
+  color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif;
+  transition:all 0.2s;margin-top:16px;
+}
+.admin-save-btn:hover{background:var(--green-d);}
+.log-entry{
+  padding:10px 14px;border-radius:8px;margin-bottom:6px;font-size:13px;
+  background:#fafdf6;border-left:3px solid var(--green);color:#2a3422;
+  display:flex;align-items:center;justify-content:space-between;
+}
+.log-time{font-size:11px;color:#9aaa90;margin-top:2px;}
+.qad-status{display:flex;align-items:center;gap:10px;padding:14px 18px;background:#f4faf0;border-radius:10px;border:1px solid #d4e8c4;}
+.qad-dot{width:10px;height:10px;border-radius:50%;background:var(--green);}
+.qad-dot.offline{background:#f87171;}
+.qad-info{flex:1;}
+.qad-info strong{font-size:14px;color:#1c2217;}
+.qad-info span{font-size:12px;color:#7a8670;display:block;}
+.nav-tabs{display:flex;gap:4px;background:#f4f6f0;border-radius:10px;padding:4px;margin-bottom:24px;}
+.nav-tab{
+  flex:1;padding:9px 12px;border:none;background:transparent;border-radius:8px;
+  font-size:13px;font-weight:500;cursor:pointer;color:#6a7060;font-family:'Outfit',sans-serif;transition:all 0.2s;
+}
+.nav-tab.active{background:#fff;color:var(--green-d);box-shadow:0 1px 4px rgba(0,0,0,0.08);}
+
+/* ====== MOBILE ====== */
+.mobile-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:90;}
+@media(max-width:768px){
+  .sidebar{position:fixed;left:0;top:0;bottom:0;z-index:100;transform:translateX(-100%);}
+  .sidebar.open{transform:translateX(0);}
+  .mobile-menu-btn{display:block;}
+  .mobile-overlay{display:block;}
+  .chat-topbar{padding:12px 16px;}
+  .chat-messages{padding:20px 16px;}
+  .chat-input-area{padding:12px 16px 16px;}
+  .msg-bubble{max-width:85%;}
+  .topbar-btn span{display:none;}
+  .admin-grid{grid-template-columns:1fr 1fr;}
+  .admin-form-grid{grid-template-columns:1fr;}
+  .admin-body{padding:16px;}
 }
 
-// ===== ENDPOINT DE LOGIN =====
-app.post('/api/login', async (req, res) => {
-  const { username, password } = req.body;
-  if(!username || !password) return res.status(400).json({ error: 'Faltan datos' });
-  try {
-    if(pool){
-      console.log(`Login attempt: user="${username.toUpperCase()}" pass="${password}"`);
-      const result = await pool.query(
-        'SELECT id, username, role, active FROM usuarios WHERE UPPER(username)=$1 AND password=$2',
-        [username.toUpperCase(), password]
-      );
-      console.log(`Login result: ${result.rows.length} rows found`);
-      if(result.rows.length === 0) return res.json({ ok: false, error: 'Usuario o contraseña incorrectos' });
-      const user = result.rows[0];
-      if(!user.active) return res.json({ ok: false, error: 'Usuario inactivo' });
-      return res.json({ ok: true, user: { id: user.id, username: user.username, role: user.role, active: true } });
-    } else {
-      // Fallback sin DB
-      return res.json({ ok: false, error: 'Base de datos no disponible' });
-    }
-  } catch(e) {
-    console.error('Error login:', e.message);
-    res.status(500).json({ ok: false, error: 'Error del servidor' });
-  }
-});
+/* Modal */
+.modal-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:500;
+  display:none;align-items:center;justify-content:center;padding:20px;
+}
+.modal-overlay.open{display:flex;}
+.modal{background:#fff;border-radius:18px;padding:28px;width:100%;max-width:440px;box-shadow:0 24px 60px rgba(0,0,0,0.2);}
+.modal h3{font-size:17px;font-weight:600;margin-bottom:20px;color:#1c2217;}
+.modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:20px;}
+.modal-cancel{padding:9px 20px;border:1.5px solid #d4e0c8;border-radius:8px;background:#fff;font-size:14px;cursor:pointer;font-family:'Outfit',sans-serif;}
+.modal-confirm{padding:9px 20px;border:none;border-radius:8px;background:var(--green);color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif;}
 
-// ===== ENDPOINT GESTIÓN USUARIOS =====
-app.get('/api/usuarios', async (req, res) => {
-  try {
-    if(!pool) return res.json({ users: [] });
-    const result = await pool.query('SELECT id, username, role, active FROM usuarios ORDER BY id');
-    res.json({ users: result.rows });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
+/* Toast */
+.toast{
+  position:fixed;bottom:24px;right:24px;background:#1a1f16;color:#fff;
+  padding:12px 20px;border-radius:10px;font-size:14px;z-index:9999;
+  transform:translateY(60px);opacity:0;transition:all 0.3s;box-shadow:0 8px 24px rgba(0,0,0,0.2);
+}
+.toast.show{transform:translateY(0);opacity:1;}
+.toast.success{border-left:3px solid var(--green);}
+.toast.error{border-left:3px solid #ef4444;}
 
-app.post('/api/usuarios', async (req, res) => {
-  const { username, password, role } = req.body;
-  if(!username || !password) return res.status(400).json({ error: 'Faltan datos' });
-  try {
-    if(!pool) return res.status(500).json({ error: 'Sin DB' });
-    await pool.query(
-      'INSERT INTO usuarios (username, password, role, active) VALUES ($1, $2, $3, true) ON CONFLICT (username) DO UPDATE SET password=$2, role=$3, active=true',
-      [username.toUpperCase(), password, role || 'user']
-    );
-    res.json({ ok: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
+/* Scrollbar */
+::-webkit-scrollbar{width:5px;height:5px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:#c8d8bc;border-radius:4px;}
+</style>
+</head>
+<body>
 
-app.delete('/api/usuarios/:username', async (req, res) => {
-  const { username } = req.params;
-  if(username.toUpperCase() === 'SISTEMAS1900') return res.status(400).json({ error: 'No puedes eliminar este usuario' });
-  try {
-    if(!pool) return res.status(500).json({ error: 'Sin DB' });
-    await pool.query('UPDATE usuarios SET active=false WHERE UPPER(username)=$1', [username.toUpperCase()]);
-    res.json({ ok: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
+<!-- ===== LOGIN ===== -->
+<div id="loginScreen">
+  <div class="login-grid"></div>
+  <div class="login-glow"></div>
+  <div class="login-card">
+    <div class="login-logo">
+      <img src="/icons/vivatex-logo.png" alt="Vivatex" onerror="this.style.display='none'">
+    </div>
+    <div class="login-brand">
+      <div class="aviva">AVIVA</div>
+      <div class="by">by Grupo Vivatex</div>
+    </div>
+    <div class="login-line"></div>
+    <div class="login-err" id="loginErr">Usuario o contraseña incorrectos</div>
+    <label class="login-label" for="loginUser">Usuario</label>
+    <input class="login-input" type="text" id="loginUser" placeholder="Ingresa tu usuario" autocomplete="username">
+    <label class="login-label" for="loginPass">Contraseña</label>
+    <input class="login-input" type="password" id="loginPass" placeholder="••••••••••" autocomplete="current-password">
+    <button class="login-btn" id="loginBtn" type="button">Iniciar sesión</button>
+    <div class="login-footer">Sistema de uso exclusivo · Grupo Vivatex S.A. de C.V.</div>
+  </div>
+</div>
 
-// Guardar datos QAD en DB
-async function saveQADToDB(key, filename, sheetName, data) {
-  if (!pool) return;
+<!-- ===== APP ===== -->
+<div id="appScreen">
+  <div class="mobile-overlay" id="mobileOverlay" onclick="closeSidebar()"></div>
+
+  <!-- Sidebar -->
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <img src="/icons/vivatex-logo.png" alt="Vivatex" style="height:36px;vertical-align:middle;" onerror="this.style.display='none'">
+      <div class="sidebar-logo-text">
+        <span class="v">AVIVA</span>
+        <span class="s">Vivatex AI</span>
+      </div>
+    </div>
+    <div class="sidebar-user">
+      <div class="su-name" id="sidebarUser">—</div>
+      <div class="su-role" id="sidebarRole">Usuario</div>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">Navegación</div>
+      <button class="sidebar-btn active" id="navChat" onclick="showChat()">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+        Chat con AVIVA
+      </button>
+      <button class="sidebar-btn" id="navAdmin" onclick="showAdmin()" style="display:none">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+        Panel de Sistemas
+      </button>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">Historial reciente</div>
+      <div class="history-list" id="historyList"></div>
+    </div>
+    <div class="sidebar-spacer"></div>
+    <button class="sidebar-new-chat" onclick="newChat()">
+      <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+      Nueva conversación
+    </button>
+    <button class="sidebar-logout" onclick="doLogout()">
+      <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+      Cerrar sesión
+    </button>
+  </div>
+
+  <!-- Chat Area -->
+  <div class="main-area" id="chatArea">
+    <div class="chat-topbar">
+      <div class="chat-topbar-left">
+        <button class="mobile-menu-btn" onclick="openSidebar()">
+          <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="#5a6a50" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+        <div>
+          <div class="chat-topbar-title">AVIVA</div>
+          <div class="chat-topbar-status">
+            <div class="status-dot"></div>
+            <span id="qadStatusText">Conectado a QAD</span>
+          </div>
+        </div>
+      </div>
+      <div class="chat-topbar-actions">
+        <button class="topbar-btn" onclick="exportExcel()">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+          <span>Excel</span>
+        </button>
+        <button class="topbar-btn" onclick="exportPDF()">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+          <span>PDF</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="chat-messages" id="chatMessages">
+      <div class="welcome-screen" id="welcomeScreen">
+        <div class="welcome-icon">
+          <svg width="40" height="40" fill="none" viewBox="0 0 24 24" stroke="#4a9a20" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23-.693L5 14.5m14.8.8l1.402 1.402c1 1 .316 2.702-1.067 2.702H4.865c-1.383 0-2.067-1.702-1.067-2.702L5 14.5"/></svg>
+        </div>
+        <div class="welcome-title">Hola, soy <span>AVIVA</span> 👋</div>
+        <div class="welcome-sub">Tu asistente inteligente conectado al sistema QAD de Vivatex. Puedo ayudarte con ventas, inventario, reportes y mucho más.</div>
+        <div class="welcome-chips">
+          <div class="chip" onclick="sendChip('¿Cuáles son las ventas del mes actual?')">📊 Ventas del mes</div>
+          <div class="chip" onclick="sendChip('Muéstrame el inventario disponible')">📦 Inventario</div>
+          <div class="chip" onclick="sendChip('Genera un reporte de clientes principales')">👥 Clientes</div>
+          <div class="chip" onclick="sendChip('¿Cuáles son las órdenes de compra pendientes?')">🧾 Órdenes pendientes</div>
+          <div class="chip" onclick="sendChip('Dame el resumen financiero del mes')">💰 Resumen financiero</div>
+          <div class="chip" onclick="sendChip('¿Qué productos tienen baja existencia?')">⚠️ Stock bajo</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="chat-input-area">
+      <div class="chat-input-wrap">
+        <button class="attach-btn" onclick="document.getElementById('fileInput').click()" title="Subir Excel o CSV de QAD">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/></svg>
+        </button>
+        <input type="file" id="fileInput" accept=".xlsx,.xls,.csv,.pdf,.png,.jpg,.jpeg,.gif,.webp" multiple style="display:none" onchange="handleFileUpload(this)">
+        <button class="attach-btn" id="micBtn" onclick="toggleVoice()" title="Hablar con AVIVA">
+          <svg id="micIcon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/></svg>
+        </button>
+        <textarea id="msgInput" rows="1" placeholder="Pregúntale algo a AVIVA… 📎 archivos o 🎤 voz" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+        <button class="send-btn" id="sendBtn" onclick="sendMessage()">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.772 59.772 0 013.27 20.876L5.999 12zm0 0h7.5"/></svg>
+        </button>
+      </div>
+      <div class="input-hint">AAVIVA puede cometer errores. Verifica información crítica en QAD directamente.</div>
+    </div>
+  </div>
+
+  <!-- Admin Panel -->
+  <div id="adminPanel">
+    <div class="admin-topbar">
+      <div class="chat-topbar-left">
+        <button class="mobile-menu-btn" onclick="openSidebar()">
+          <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="#5a6a50" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+        <div class="admin-topbar-title">⚙️ Panel de Sistemas — AVIVA</div>
+      </div>
+    </div>
+    <div class="admin-body">
+      <div class="nav-tabs">
+        <button class="nav-tab active" onclick="adminTab('overview',this)">Vista general</button>
+        <button class="nav-tab" onclick="adminTab('users',this)">Usuarios</button>
+        <button class="nav-tab" onclick="adminTab('qad',this)">Conexión QAD</button>
+        <button class="nav-tab" onclick="adminTab('logs',this)">Logs</button>
+      </div>
+
+      <!-- Overview Tab -->
+      <div id="tabOverview">
+        <div class="admin-grid">
+          <div class="stat-card"><div class="sc-label">Usuarios activos</div><div class="sc-value" id="statUsers">6</div><div class="sc-sub">Total registrados</div></div>
+          <div class="stat-card"><div class="sc-label">Estado QAD</div><div class="sc-value" style="font-size:20px;color:var(--green)" id="statQAD">Conectado</div><div class="sc-sub" id="statQADsub">API respondiendo</div></div>
+          <div class="stat-card"><div class="sc-label">Consultas hoy</div><div class="sc-value" id="statQueries">—</div><div class="sc-sub">En todas las sesiones</div></div>
+          <div class="stat-card"><div class="sc-label">Versión AVIVA</div><div class="sc-value" style="font-size:20px">1.0.0</div><div class="sc-sub">Actualizado hoy</div></div>
+        </div>
+        <div class="admin-section">
+          <div class="admin-section-head"><h3>Estado del sistema</h3></div>
+          <div class="admin-section-body">
+            <div class="qad-status" id="qadStatusCard">
+              <div class="qad-dot" id="qadDot"></div>
+              <div class="qad-info">
+                <strong id="qadStatusLabel">QAD Enterprise — Conectado</strong>
+                <span id="qadStatusDetail">Última sincronización: hace unos momentos</span>
+              </div>
+              <button class="action-btn" onclick="testQAD()">Probar conexión</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Users Tab -->
+      <div id="tabUsers" style="display:none">
+        <div class="admin-section">
+          <div class="admin-section-head">
+            <h3>Gestión de usuarios</h3>
+            <button class="action-btn" onclick="openAddUser()">+ Agregar usuario</button>
+            <button class="action-btn" style="background:#2563eb;color:#fff" onclick="migrateUsersToPostgres()">🔄 Guardar todos en BD</button>
+          </div>
+          <div class="admin-section-body" style="padding:0">
+            <table class="users-table">
+              <thead><tr><th>Usuario</th><th>Rol</th><th>Estado</th><th>Acciones</th></tr></thead>
+              <tbody id="usersTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- QAD Tab -->
+      <div id="tabQad" style="display:none">
+        <div class="admin-section">
+          <div class="admin-section-head"><h3>📂 Subir archivos de QAD (Opción A — Cada hora)</h3></div>
+          <div class="admin-section-body">
+            <p style="font-size:13px;color:#6a7060;margin-bottom:16px">Sube los reportes exportados de QAD en formato Excel o CSV. AVIVA los leerá y podrá responder preguntas con esa información.</p>
+            <div style="border:2px dashed #6BBF3E;border-radius:12px;padding:28px;text-align:center;background:#f4faf0;cursor:pointer" onclick="document.getElementById('adminFileInput').click()">
+              <div style="font-size:32px;margin-bottom:8px">📊</div>
+              <div style="font-size:15px;font-weight:600;color:#1c2217;margin-bottom:4px">Arrastra archivos aquí o haz clic para seleccionar</div>
+              <div style="font-size:12px;color:#6a7060">Formatos: .xlsx, .xls, .csv · Múltiples archivos permitidos</div>
+            </div>
+            <input type="file" id="adminFileInput" accept=".xlsx,.xls,.csv" multiple style="display:none" onchange="uploadQADFiles(this.files)">
+            <input type="file" id="adminPdfInput" accept=".pdf" multiple style="display:none" onchange="uploadQADPDFs(this.files)">
+            <div id="qadUploadStatus" style="margin-top:12px;font-size:13px;min-height:20px"></div>
+            <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
+              <button class="admin-save-btn" style="margin:0" onclick="document.getElementById('adminFileInput').click()">📂 Seleccionar archivos QAD</button>
+              <button class="admin-save-btn" style="margin:0;background:#1c2217" onclick="clearQADData()">🗑️ Limpiar datos QAD</button>
+              <button class="admin-save-btn" style="margin:0;background:#2563eb" onclick="checkQADStatus()">🔄 Ver estado actual</button>
+            </div>
+          </div>
+        </div>
+        <div class="admin-section">
+          <div class="admin-section-head"><h3>Configuración de API QAD</h3></div>
+          <div class="admin-section-body">
+            <div class="admin-form-grid">
+              <div class="admin-form-field">
+                <label>URL del servidor QAD</label>
+                <input type="text" id="qadUrl" placeholder="https://qad.vivatex.com/api">
+              </div>
+              <div class="admin-form-field">
+                <label>Puerto</label>
+                <input type="text" id="qadPort" placeholder="8080">
+              </div>
+              <div class="admin-form-field">
+                <label>API Key / Token</label>
+                <input type="password" id="qadToken" placeholder="••••••••••••••••">
+              </div>
+              <div class="admin-form-field">
+                <label>Empresa / Dominio QAD</label>
+                <input type="text" id="qadCompany" placeholder="VIVATEX">
+              </div>
+              <div class="admin-form-field">
+                <label>Usuario QAD</label>
+                <input type="text" id="qadUser" placeholder="api_user">
+              </div>
+              <div class="admin-form-field">
+                <label>Contraseña QAD</label>
+                <input type="password" id="qadPass" placeholder="••••••••">
+              </div>
+            </div>
+            <button class="admin-save-btn" onclick="saveQAD()">Guardar y probar conexión</button>
+          </div>
+        </div>
+        <div class="admin-section">
+          <div class="admin-section-head"><h3>Módulos QAD habilitados</h3></div>
+          <div class="admin-section-body">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">
+              <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer"><input type="checkbox" checked> Ventas (SO)</label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer"><input type="checkbox" checked> Inventario (IC)</label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer"><input type="checkbox" checked> Compras (PO)</label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer"><input type="checkbox" checked> Finanzas (GL)</label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer"><input type="checkbox" checked> Clientes (AR)</label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer"><input type="checkbox"> Producción (MFG)</label>
+            </div>
+            <button class="admin-save-btn" onclick="showToast('Módulos guardados','success')">Guardar módulos</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Logs Tab -->
+      <div id="tabLogs" style="display:none">
+        <div class="admin-section">
+          <div class="admin-section-head">
+            <h3>Registro de actividad</h3>
+            <button class="action-btn" onclick="clearLogs()">Limpiar logs</button>
+          </div>
+          <div class="admin-section-body" id="logsContainer">
+            <div style="color:#aab4a0;font-size:13px;text-align:center;padding:20px">Cargando logs…</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal agregar/editar usuario -->
+<div class="modal-overlay" id="userModal">
+  <div class="modal">
+    <h3 id="modalTitle">Agregar usuario</h3>
+    <div class="admin-form-grid">
+      <div class="admin-form-field">
+        <label>Usuario</label>
+        <input type="text" id="modalUser" placeholder="USUARIO123">
+      </div>
+      <div class="admin-form-field">
+        <label>Contraseña</label>
+        <input type="password" id="modalPass" placeholder="••••••••">
+      </div>
+      <div class="admin-form-field" style="grid-column:span 2">
+        <label>Rol</label>
+        <select id="modalRole">
+          <option value="user">Usuario — Solo chat</option>
+          <option value="admin">Sistemas — Chat + Panel admin</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="modal-cancel" onclick="closeModal()">Cancelar</button>
+      <button class="modal-confirm" onclick="saveUser()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ===== DATA =====
+// Permisos por usuario
+const USER_PERMISSIONS = {
+  'JRZ123':          { type:'full', restrict:[] },
+  'JRR234':          { type:'full', restrict:[] },
+  'SRR456':          { type:'full', restrict:[] },
+  'SRB0707':         { type:'full', restrict:[] },
+  'SISTEMAS1900':    { type:'admin', restrict:[] },
+  'LEO2026':         { type:'no_contable', restrict:['contabilidad','activos','pasivos','balance general','estado de resultados','cuentas contables'] },
+  'ISMAEL_VENTAS':   { type:'ventas', restrict:[], allow:['ventas','produccion','pedidos','almacen','tela acabada','vendedores','bodega'] },
+  'GTE_ACABADO':     { type:'no_contable', restrict:['contabilidad','activos','pasivos','balance general','estado de resultados','cuentas contables'] },
+  'GTE_TEJIDO':      { type:'no_contable', restrict:['contabilidad','activos','pasivos','balance general','estado de resultados','cuentas contables'] },
+  'GTE_HILATURA':    { type:'no_contable', restrict:['contabilidad','activos','pasivos','balance general','estado de resultados','cuentas contables'] },
+  'MARTIN_CONTA':    { type:'full', restrict:[] },
+  'VENTAS_MONICA':   { type:'vendedor', restrict:[], vendedor:'Monica Caceres', allow:['ventas','pedidos','atrasos','clientes','bodega','almacen'] },
+  'VENTAS_EDGAR':    { type:'vendedor', restrict:[], vendedor:'Edgar Zarate', allow:['ventas','pedidos','atrasos','clientes','bodega','almacen'] },
+  'VENTAS_AMELIA':   { type:'vendedor', restrict:[], vendedor:'Amelia Aragon', allow:['ventas','pedidos','atrasos','clientes','bodega','almacen'] },
+  'COBRANZA_CLAUDIA':{ type:'full', restrict:[] },
+  'COBRANZA_OLIVIA': { type:'full', restrict:[] },
+  'ADMON_LUCY':      { type:'full', restrict:[] },
+};
+
+let USERS = [
+  {id:1, username:'JRZ123',      password:'JACOBOrz4646',      role:'user',  active:true},
+  {id:2, username:'JRR234',      password:'JACOBOrr8989',      role:'user',  active:true},
+  {id:3, username:'SRR456',      password:'SIMONrr0202',       role:'user',  active:true},
+  {id:4, username:'SRB0707',     password:'SALOrb0909',        role:'user',  active:true},
+  {id:5, username:'SISTEMAS1900',password:'SISTEMASviva2026',  role:'admin', active:true},
+  {id:6, username:'LEO2026',     password:'LEOg1986',          role:'user',  active:true},
+];
+
+let QAD_CONFIG = {url:'', port:'', token:'', company:'', user:'', pass:''};
+let currentUser = null;
+let conversations = {};  // { convId: { title, messages: [{role,content,time}] } }
+let currentConvId = null;
+let allConversations = [];  // lista de todas las conversaciones del usuario
+
+// Generar ID único para conversación
+function genConvId() { return 'conv_' + Date.now() + '_' + Math.random().toString(36).substr(2,6); }
+
+// Guardar conversación actual en DB
+async function saveCurrentConv() {
+  if (!currentUser || !currentConvId) return;
+  const conv = conversations[currentConvId];
+  if (!conv || !conv.messages.length) return;
   try {
-    await pool.query(`
-      INSERT INTO qad_data (sheet_key, filename, sheet_name, data, updated_at)
-      VALUES ($1, $2, $3, $4, NOW())
-      ON CONFLICT (sheet_key) DO UPDATE
-      SET filename=$2, sheet_name=$3, data=$4, updated_at=NOW()
-    `, [key, filename, sheetName, JSON.stringify(data)]);
-  } catch (e) {
-    console.error('Error guardando en DB:', e.message);
-  }
+    await fetch('/api/conversations/save', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        username: currentUser.username,
+        convId: currentConvId,
+        title: conv.title || conv.messages[0]?.content?.substring(0,60) || 'Conversación',
+        messages: conv.messages
+      })
+    });
+  } catch(e) { console.warn('No se pudo guardar conversación:', e); }
 }
 
-// Cargar datos QAD desde DB
-async function loadQADFromDB() {
-  if (!pool) return {};
+// Cargar todas las conversaciones del usuario desde DB
+async function loadUserConversations() {
+  if (!currentUser) return;
   try {
-    const result = await pool.query('SELECT * FROM qad_data ORDER BY updated_at DESC');
-    const cache = {};
-    result.rows.forEach(row => {
-      // Asegurar que data sea siempre un array
-      let data = row.data;
-      if (typeof data === 'string') {
-        try { data = JSON.parse(data); } catch(e) { data = []; }
-      }
-      if (!Array.isArray(data)) data = data ? [data] : [];
-      cache[row.sheet_key] = {
-        data: data,
-        filename: row.filename,
-        sheet: row.sheet_name,
-        updatedAt: row.updated_at
+    const res = await fetch('/api/conversations/' + currentUser.username);
+    const data = await res.json();
+    allConversations = data.conversations || [];
+    // Cargar en memoria
+    allConversations.forEach(c => {
+      conversations[c.conv_id] = {
+        title: c.title,
+        messages: c.messages || [],
+        updatedAt: c.updated_at
       };
     });
-    return cache;
-  } catch (e) {
-    console.error('Error cargando DB:', e.message);
-    return {};
-  }
+    renderHistory();
+  } catch(e) { console.warn('No se pudieron cargar conversaciones:', e); }
 }
 
-// Limpiar datos QAD de DB
-async function clearQADFromDB() {
-  if (!pool) return;
-  try {
-    await pool.query('DELETE FROM qad_data');
-  } catch (e) {
-    console.error('Error limpiando DB:', e.message);
-  }
+// Cargar una conversación específica
+function loadConversation(convId) {
+  currentConvId = convId;
+  renderMessages();
+  showChat();
 }
-
-// Cache en memoria (respaldo)
-let qadDataCache = {};
-let qadLastUpdate = null;
-
-// Multer para subida de archivos
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 50 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    const allowed = ['.xlsx', '.xls', '.csv'];
-    const ext = path.extname(file.originalname).toLowerCase();
-    cb(null, allowed.includes(ext));
-  }
-});
-
-// Parsear Excel/CSV
-function parseFile(buffer, filename) {
-  try {
-    const ext = path.extname(filename).toLowerCase();
-    const workbook = xlsx.read(buffer, { type: 'buffer' });
-    const result = {};
-    workbook.SheetNames.forEach(sheetName => {
-      const sheet = workbook.Sheets[sheetName];
-      result[sheetName] = xlsx.utils.sheet_to_json(sheet, { defval: '' });
-    });
-    return result;
-  } catch (e) {
-    console.error('Error parseando archivo:', e);
-    return null;
-  }
-}
-
-// ---- Subir archivos QAD ----
-app.post('/api/qad/upload', upload.array('files', 20), async (req, res) => {
-  if (!req.files || req.files.length === 0) {
-    return res.status(400).json({ error: 'No se recibieron archivos' });
-  }
-  let totalSheets = 0;
-  for (const file of req.files) {
-    const parsed = parseFile(file.buffer, file.originalname);
-    if (parsed) {
-      const baseName = path.basename(file.originalname, path.extname(file.originalname));
-      // Incluir timestamp en la key para preservar historial — nunca sobreescribir datos anteriores
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
-      for (const sheet of Object.keys(parsed)) {
-        const key = `${baseName}_${sheet}_${timestamp}`.replace(/\s+/g, '_').toLowerCase();
-        const entry = {
-          data: parsed[sheet],
-          filename: file.originalname,
-          sheet,
-          uploadDate: timestamp,
-          updatedAt: new Date().toISOString()
-        };
-        qadDataCache[key] = entry;
-        await saveQADToDB(key, file.originalname, sheet, parsed[sheet]);
-        totalSheets++;
-      }
-    }
-  }
-  qadLastUpdate = new Date().toISOString();
-  console.log(`📊 QAD: ${req.files.length} archivos, ${totalSheets} hojas`);
-  res.json({ ok: true, files: req.files.length, sheets: totalSheets, updatedAt: qadLastUpdate });
-});
-
-// ---- Estado QAD ----
-// ===== ENDPOINT SUBIDA PDF =====
-app.post('/api/qad/upload-pdf', upload.single('pdf'), async (req, res) => {
-  if(!req.file) return res.status(400).json({ error: 'No se recibio archivo PDF' });
-  try {
-    const key = 'pdf_' + req.file.originalname + '_' + Date.now();
-    const entry = {
-      filename: req.file.originalname,
-      sheet: 'PDF',
-      data: '[Archivo PDF: ' + req.file.originalname + ' - ' + Math.round(req.file.size/1024) + 'KB]',
-      updatedAt: new Date().toISOString()
-    };
-    qadDataCache[key] = entry;
-    if(pool){
-      await pool.query(
-        'INSERT INTO qad_data (sheet_key, filename, sheet_name, data, updated_at) VALUES ($1,$2,$3,$4,NOW()) ON CONFLICT (sheet_key) DO UPDATE SET data=$4, updated_at=NOW()',
-        [key, entry.filename, 'PDF', JSON.stringify(entry.data)]
-      );
-    }
-    res.json({ ok: true, message: 'PDF recibido: ' + req.file.originalname });
-  } catch(e){
-    console.error('Error PDF:', e);
-    res.status(500).json({ error: e.message });
-  }
-});
-
-app.get('/api/qad/status', async (req, res) => {
-  const cache = pool ? await loadQADFromDB() : qadDataCache;
-  const keys = Object.keys(cache);
-  res.json({
-    hasData: keys.length > 0,
-    sheets: keys,
-    lastUpdate: qadLastUpdate,
-    totalRecords: keys.reduce((sum, k) => sum + (cache[k]?.data?.length || 0), 0),
-    persistent: !!pool
-  });
-});
-
-// ---- Limpiar QAD ----
-app.delete('/api/qad/clear', async (req, res) => {
-  qadDataCache = {};
-  qadLastUpdate = null;
-  await clearQADFromDB();
-  res.json({ ok: true });
-});
-
-// ---- Rutas de conversaciones ----
-
-// Guardar conversación
-app.post('/api/conversations/save', async (req, res) => {
-  const { username, convId, title, messages } = req.body;
-  if (!username || !convId) return res.status(400).json({ error: 'Faltan datos' });
-  try {
-    if (pool) {
-      await pool.query(`
-        INSERT INTO conversations (username, conv_id, title, messages, updated_at)
-        VALUES ($1, $2, $3, $4, NOW())
-        ON CONFLICT (username, conv_id) DO UPDATE
-        SET title=$3, messages=$4, updated_at=NOW()
-      `, [username, convId, title || 'Conversación', JSON.stringify(messages)]);
-    }
-    res.json({ ok: true });
-  } catch (e) {
-    console.error('Error guardando conversación:', e.message);
-    res.status(500).json({ error: 'Error guardando' });
-  }
-});
-
-// Obtener todas las conversaciones de un usuario
-app.get('/api/conversations/:username', async (req, res) => {
-  const { username } = req.params;
-  try {
-    if (!pool) return res.json({ conversations: [] });
-    const result = await pool.query(
-      'SELECT conv_id, title, messages, created_at, updated_at FROM conversations WHERE username=$1 ORDER BY updated_at DESC LIMIT 50',
-      [username]
-    );
-    res.json({ conversations: result.rows });
-  } catch (e) {
-    console.error('Error cargando conversaciones:', e.message);
-    res.json({ conversations: [] });
-  }
-});
 
 // Eliminar conversación
-app.delete('/api/conversations/:username/:convId', async (req, res) => {
-  const { username, convId } = req.params;
+async function deleteConversation(convId) {
+  if (!currentUser) return;
   try {
-    if (pool) await pool.query('DELETE FROM conversations WHERE username=$1 AND conv_id=$2', [username, convId]);
-    res.json({ ok: true });
-  } catch (e) {
-    res.status(500).json({ error: 'Error eliminando' });
-  }
-});
-
-// ---- Generar Excel Profesional ----
-app.post('/api/excel/generate', async (req, res) => {
-  const { titulo, usuario, hojas, subtitulo, periodo, confidencial, resumen } = req.body;
-  if (!hojas || !hojas.length) return res.status(400).json({ error: 'Sin datos' });
-
-  try {
-    const { spawn } = require('child_process');
-    const fs = require('fs');
-    const os = require('os');
-    const tmpPath = path.join(os.tmpdir(), `vivatex_${Date.now()}.xlsx`);
-
-    const input = JSON.stringify({
-      titulo: titulo || 'Reporte Vivatex',
-      subtitulo: subtitulo || 'Reporte Ejecutivo',
-      empresa: 'Grupo Vivatex S.A. de C.V.',
-      periodo: periodo || new Date().toLocaleDateString('es-MX', { year:'numeric', month:'long' }),
-      confidencial: confidencial || 'Confidencial · Uso exclusivo Dirección General',
-      resumen: resumen || null,
-      hojas
-    });
-
-    const py = spawn('python3', [path.join(__dirname, 'generate_excel.py'), input, tmpPath]);
-    let output = '';
-    let errOut = '';
-
-    py.stdout.on('data', d => output += d.toString());
-    py.stderr.on('data', d => errOut += d.toString());
-
-    py.on('close', (code) => {
-      if (code !== 0) {
-        console.error('Error generando Excel:', errOut);
-        return res.status(500).json({ error: 'Error generando Excel: ' + errOut });
-      }
-      try {
-        const result = JSON.parse(output.trim());
-        if (!result.success) return res.status(500).json({ error: result.error });
-        const fileBuffer = fs.readFileSync(tmpPath);
-        const base64 = fileBuffer.toString('base64');
-        fs.unlinkSync(tmpPath);
-        const filename = `Vivatex_${(titulo||'Reporte').replace(/[^a-zA-Z0-9_]/g,'_')}_${new Date().toISOString().split('T')[0]}.xlsx`;
-        res.json({ ok: true, base64, filename });
-      } catch(e) {
-        res.status(500).json({ error: 'Error procesando Excel: ' + e.message });
-      }
-    });
-  } catch(e) {
-    console.error('Error Excel:', e);
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// ---- Chat principal ----
-app.post('/api/chat', async (req, res) => {
-  const { messages, system } = req.body;
-  if (!messages || !system) return res.status(400).json({ error: 'Faltan datos' });
-
-  try {
-    // Cargar datos QAD (desde DB si disponible, sino memoria)
-    const cache = pool ? await loadQADFromDB() : qadDataCache;
-    const keys = Object.keys(cache);
-    let qadContext = '';
-
-    if (keys.length > 0) {
-      const lastMsg = messages[messages.length - 1]?.content?.toLowerCase() || '';
-      
-      // ===== BÚSQUEDA SEMÁNTICA INTELIGENTE =====
-      // Extraer palabras clave de la pregunta (ignorar palabras comunes)
-      const stopWords = new Set(['que','como','cual','cuales','dame','dime','muestra','genera','hacer','haz','para','por','con','sin','los','las','del','una','uno','este','esta','estos','estas','hay','tiene','tienen','puede','pueden','quiero','necesito','favor','por','reporte','tabla','excel','pdf','info','informacion','datos','todo','todos','toda','todas']);
-      const keywords = lastMsg.split(/[\s,;:.!?]+/)
-        .map(w => w.replace(/[^a-záéíóúüñ0-9]/gi, '').toLowerCase())
-        .filter(w => w.length > 2 && !stopWords.has(w));
-      
-      // Para cada hoja, buscar filas que coincidan con las palabras clave
-      const sheetResults = [];
-      
-      keys.forEach(key => {
-        const c = cache[key];
-        if (!Array.isArray(c.data) || c.data.length === 0) return;
-        
-        // Buscar coincidencias en los datos
-        let matchingRows = [];
-        let headerRows = c.data.slice(0, 2); // Siempre incluir primeras 2 filas (encabezados)
-        
-        if (keywords.length > 0) {
-          matchingRows = c.data.filter((row, idx) => {
-            if (idx < 2) return false; // Skip headers
-            const rowStr = JSON.stringify(row).toLowerCase()
-              .normalize('NFD').replace(/[\u0300-\u036f]/g, ''); // Normalize accents
-            const msgNorm = lastMsg.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-            const kwNorm = keywords.map(k => k.normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
-            return kwNorm.some(kw => rowStr.includes(kw));
-          });
-        }
-        
-        // Combinar: encabezados + coincidencias + muestra general
-        const generalSample = c.data.slice(0, 5);
-        const combined = [...headerRows, ...matchingRows.slice(0, 80), ...generalSample]
-          .filter((v, i, arr) => arr.findIndex(x => JSON.stringify(x) === JSON.stringify(v)) === i)
-          .slice(0, 100);
-        
-        const hasMatches = matchingRows.length > 0;
-        const score = hasMatches ? matchingRows.length : 0;
-        
-        sheetResults.push({
-          key, score, hasMatches,
-          text: `\n### ${c.filename} — ${c.sheet} (${c.data.length} registros totales, ${matchingRows.length} coincidencias)\n${JSON.stringify(combined, null, 1)}`,
-          textLength: 0
-        });
-      });
-      
-      // Ordenar: primero las hojas con más coincidencias
-      sheetResults.sort((a, b) => b.score - a.score);
-      
-      // Calcular longitud y limitar a 100k chars total (~25k tokens)
-      const MAX_CHARS = 100000;
-      let totalChars = 0;
-      const selectedSheets = [];
-      
-      for (const sheet of sheetResults) {
-        if (totalChars + sheet.text.length > MAX_CHARS) {
-          // Si no cabe completo, intentar versión reducida
-          if (selectedSheets.length === 0 && sheet.hasMatches) {
-            // Al menos incluir las coincidencias de la hoja más relevante
-            const shortText = sheet.text.substring(0, MAX_CHARS - totalChars - 100);
-            if (shortText.length > 200) selectedSheets.push(shortText + '\n...(datos truncados)');
-          }
-          break;
-        }
-        selectedSheets.push(sheet.text);
-        totalChars += sheet.text.length;
-      }
-      
-      // Índice de todas las hojas disponibles
-      const sheetIndex = keys.map(k => {
-        const c = cache[k];
-        return `- ${c.filename} / ${c.sheet}: ${Array.isArray(c.data) ? c.data.length : '?'} registros`;
-      }).join('\n');
-      
-      if (selectedSheets.length > 0) {
-        qadContext = `\n\nDATOS QAD (${new Date().toLocaleString('es-MX')}):\nHojas disponibles:\n${sheetIndex}\n\nDatos relevantes para tu consulta:\n${selectedSheets.join('\n')}`;
-      } else {
-        qadContext = `\n\nDatos disponibles en QAD (${keys.length} hojas):\n${sheetIndex}\n\nNota: Los datos son muy grandes. Haz una pregunta más específica para ver los registros.`;
-      }
+    await fetch('/api/conversations/' + currentUser.username + '/' + convId, {method:'DELETE'});
+    delete conversations[convId];
+    allConversations = allConversations.filter(c => c.conv_id !== convId);
+    if (currentConvId === convId) {
+      currentConvId = null;
+      startNewConversation();
     }
+    renderHistory();
+    showToast('Conversación eliminada','success');
+  } catch(e) { showToast('Error al eliminar','error'); }
+}
+let activityLogs = [];
+let editingUserId = null;
+let queryCount = 0;
 
-    // Aplicar restricciones de permisos según el usuario
-    const username = req.body.username || '';
-    let permContext = '';
+// ===== CONVERSACIONES =====
+function startNewConversation(){
+  currentConvId = genConvId();
+  conversations[currentConvId] = { title: 'Nueva conversación', messages: [], updatedAt: new Date().toISOString() };
+  pendingFiles = [];
+  const wrap = document.getElementById('messagesWrap');
+  if(wrap) wrap.innerHTML = '';
+  const welcome = document.getElementById('welcomeScreen');
+  if(welcome) welcome.style.display = 'flex';
+  const input = document.getElementById('msgInput');
+  if(input) { input.value = ''; input.style.height = 'auto'; }
+  renderHistory();
+  showChat();
+  setTimeout(() => { if(input) input.focus(); }, 100);
+}
 
-    const NO_CONTABLE_USERS = ['LEO2026','GTE_ACABADO','GTE_TEJIDO','GTE_HILATURA','ISRAEL_ACABADO','MEMO_TEJIDO','CARLOSM_H'];
-    const VENDEDOR_USERS = {
-      'VENTAS_MONICA': 'Monica Caceres',
-      'VENTAS_EDGAR':  'Edgar Zarate',
-      'VENTAS_AMELIA': 'Amelia Aragon',
-      'VENTAS_JORGE':  'Jorge Mejia'
-    };
+async function newChat(){
+  await saveCurrentConv();
+  startNewConversation();
+}
 
-    if(NO_CONTABLE_USERS.includes(username)){
-      permContext = `\n\nRESTRICCIONES DE ACCESO — OBLIGATORIO CUMPLIR:\n- NUNCA muestres información contable: activos, pasivos, balance general, estado de resultados, cuentas contables, debe, haber, patrimonio\n- Si preguntan sobre esos temas responde: "No tienes acceso a información contable. Consulta con el área de sistemas."\n- SÍ puedes mostrar: facturación, ventas, producción, inventario, clientes, proveedores, pedidos, cobranza y todo lo operativo`;
-    } else if(VENDEDOR_USERS[username]){
-      const vend = VENDEDOR_USERS[username];
-      permContext = `\n\nRESTRICCIONES DE ACCESO — OBLIGATORIO CUMPLIR:\n- SOLO puedes mostrar información del vendedor: ${vend}\n- Filtra SIEMPRE los datos para mostrar únicamente ventas, pedidos, atrasos, clientes y bodega/almacén relacionados con ${vend}\n- Si preguntan sobre otros vendedores responde: "Solo tienes acceso a tu información de ventas."\n- NUNCA muestres datos de otros vendedores`;
-    } else if(username === 'ISMAEL_VENTAS'){
-      permContext = `\n\nACCESOS HABILITADOS PARA ESTE USUARIO:\n- Ventas de TODOS los vendedores, producción, pedidos con y sin cliente, almacén de tela acabada y bodega`;
-    }
+// ===== AUTH =====
+async function doLogin(){
+  var u = document.getElementById('loginUser').value.trim().toUpperCase();
+  var p = document.getElementById('loginPass').value.trim();
+  var err = document.getElementById('loginErr');
 
-    const fullSystem = system + qadContext + permContext;
+  if(!u || !p){
+    err.textContent = 'Ingresa usuario y contraseña';
+    err.style.display = 'block';
+    setTimeout(function(){ err.style.display='none'; }, 3000);
+    return;
+  }
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+  // Primero intentar contra PostgreSQL
+  try {
+    var res = await fetch('/api/login', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5',
-        max_tokens: 2048,
-        system: fullSystem,
-        messages,
-      }),
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({username: u, password: p})
     });
-
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error('Anthropic API error:', errText);
-      return res.status(500).json({ error: 'Error en API de IA' });
+    var data = await res.json();
+    if(data.ok){
+      loginSuccess(data.user);
+      return;
     }
-
-    const data = await response.json();
-    const reply = data.content?.[0]?.text || 'Sin respuesta';
-    res.json({ reply });
-
-  } catch (err) {
-    console.error('Error en /api/chat:', err);
-    res.status(500).json({ error: 'Error interno del servidor' });
+  } catch(e){
+    console.warn('API login error:', e);
   }
-});
 
-// ---- PWA Manifest ----
-app.get('/manifest.json', (req, res) => {
-  res.setHeader('Content-Type', 'application/manifest+json');
-  res.json({
-    name: 'AVIVA — Vivatex IA',
-    short_name: 'AVIVA',
-    description: 'Asistente Inteligente de Grupo Vivatex S.A. de C.V.',
-    start_url: '/',
-    scope: '/',
-    display: 'standalone',
-    orientation: 'portrait-primary',
-    background_color: '#1E6B2E',
-    theme_color: '#1E6B2E',
-    lang: 'es-MX',
-    categories: ['business', 'productivity'],
-    icons: [
-      { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
-      { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
-    ],
+  // Fallback: validar contra array local
+  var found = null;
+  for(var i=0; i<USERS.length; i++){
+    if(USERS[i].username.toUpperCase()===u && USERS[i].password===p && USERS[i].active){
+      found = USERS[i]; break;
+    }
+  }
+  if(found){
+    loginSuccess(found);
+    return;
+  }
+
+  err.textContent = 'Usuario o contraseña incorrectos';
+  err.style.display = 'block';
+  setTimeout(function(){ err.style.display='none'; }, 4000);
+}
+
+function loginSuccess(found){
+  currentUser = found;
+  currentConvId = null;
+  conversations = {};
+  pendingFiles = [];
+  try { logActivity('Inicio de sesión: ' + found.username); } catch(e){}
+  document.getElementById('sidebarUser').textContent = found.username;
+  document.getElementById('sidebarRole').textContent = found.role==='admin'?'Administrador de Sistemas':'Usuario';
+  if(found.role==='admin') document.getElementById('navAdmin').style.display='flex';
+  document.getElementById('loginScreen').style.display='none';
+  document.getElementById('appScreen').classList.add('active');
+  try { renderHistory(); } catch(e){}
+  try { showChat(); } catch(e){}
+  try { startNewConversation(); } catch(e){}
+  loadUserConversations().then(function(){ try { renderHistory(); } catch(e){} }).catch(function(){});
+}
+
+document.getElementById('loginBtn').addEventListener('click', function(e){ e.preventDefault(); doLogin(); });
+
+function doLogout(){
+  logActivity(`Cierre de sesión: ${currentUser?.username}`);
+  currentUser=null;
+  document.getElementById('appScreen').classList.remove('active');
+  document.getElementById('loginScreen').style.display='flex';
+  document.getElementById('loginUser').value='';
+  document.getElementById('loginPass').value='';
+  document.getElementById('navAdmin').style.display='none';
+}
+
+// ===== NAVIGATION =====
+function showChat(){
+  document.getElementById('chatArea').style.display='flex';
+  document.getElementById('adminPanel').classList.remove('active');
+  document.getElementById('navChat').classList.add('active');
+  document.getElementById('navAdmin').classList.remove('active');
+  closeSidebar();
+  renderMessages();
+}
+
+async function showAdmin(){
+  if(!currentUser || currentUser.role!=='admin') return;
+  document.getElementById('chatArea').style.display='none';
+  document.getElementById('adminPanel').classList.add('active');
+  document.getElementById('navChat').classList.remove('active');
+  document.getElementById('navAdmin').classList.add('active');
+  closeSidebar();
+  // Cargar usuarios desde PostgreSQL
+  try {
+    const res = await fetch('/api/usuarios');
+    const data = await res.json();
+    if(data.users && data.users.length > 0){
+      // Mergear con USERS local — PostgreSQL tiene prioridad
+      data.users.forEach(dbUser => {
+        const existing = USERS.find(u => u.username.toUpperCase() === dbUser.username.toUpperCase());
+        if(!existing){
+          USERS.push({id: dbUser.id+100, username: dbUser.username, password:'****', role: dbUser.role, active: dbUser.active});
+        } else {
+          existing.role = dbUser.role;
+          existing.active = dbUser.active;
+        }
+      });
+    }
+  } catch(e){ console.warn('No se pudo cargar usuarios de DB:', e); }
+  renderUsersTable();
+  renderLogs();
+  document.getElementById('statUsers').textContent = USERS.filter(u=>u.active).length;
+  document.getElementById('statQueries').textContent = queryCount;
+}
+
+function adminTab(tab, btn){
+  document.querySelectorAll('.nav-tab').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  ['Overview','Users','Qad','Logs'].forEach(t=>document.getElementById('tab'+t).style.display='none');
+  document.getElementById('tab'+tab.charAt(0).toUpperCase()+tab.slice(1)).style.display='block';
+  if(tab==='logs') renderLogs();
+}
+
+function openSidebar(){ document.getElementById('sidebar').classList.add('open'); document.getElementById('mobileOverlay').style.display='block'; }
+function closeSidebar(){ document.getElementById('sidebar').classList.remove('open'); document.getElementById('mobileOverlay').style.display='none'; }
+
+// ===== CHAT =====
+// newChat() está definida más abajo con lógica async completa
+
+function renderMessages(){
+  const msgs = currentConvId && conversations[currentConvId] ? conversations[currentConvId].messages : [];
+  const welcome = document.getElementById('welcomeScreen');
+  if(welcome) welcome.style.display = msgs.length > 0 ? 'none' : 'flex';
+  const container = document.getElementById('chatMessages');
+  if(msgs.length===0){
+    container.innerHTML = `<div class="welcome-screen" id="welcomeScreen">
+      <div class="welcome-icon"><svg width="40" height="40" fill="none" viewBox="0 0 24 24" stroke="#4a9a20" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23-.693L5 14.5m14.8.8l1.402 1.402c1 1 .316 2.702-1.067 2.702H4.865c-1.383 0-2.067-1.702-1.067-2.702L5 14.5"/></svg></div>
+      <div class="welcome-title">Hola, soy <span style="color:var(--green)">AVIVA</span> 👋</div>
+      <div class="welcome-sub">Tu asistente inteligente conectado al sistema QAD de Vivatex. Puedo ayudarte con ventas, inventario, reportes y mucho más.</div>
+      <div class="welcome-chips">
+        <div class="chip" onclick="sendChip('¿Cuáles son las ventas del mes actual?')">📊 Ventas del mes</div>
+        <div class="chip" onclick="sendChip('Muéstrame el inventario disponible')">📦 Inventario</div>
+        <div class="chip" onclick="sendChip('Genera un reporte de clientes principales')">👥 Clientes</div>
+        <div class="chip" onclick="sendChip('¿Cuáles son las órdenes de compra pendientes?')">🧾 Órdenes pendientes</div>
+        <div class="chip" onclick="sendChip('Dame el resumen financiero del mes')">💰 Resumen financiero</div>
+        <div class="chip" onclick="sendChip('¿Qué productos tienen baja existencia?')">⚠️ Stock bajo</div>
+      </div>
+    </div>`;
+    return;
+  }
+  container.innerHTML = msgs.map(m=>`
+    <div class="msg ${m.role}">
+      <div class="msg-avatar">${m.role==='assistant'?'V':currentUser.username.substring(0,2)}</div>
+      <div>
+        <div class="msg-bubble">${m.role==='assistant'?formatMsg(m.content):escHtml(m.content)}</div>
+        <div class="msg-time">${m.time}</div>
+      </div>
+    </div>
+  `).join('');
+  container.scrollTop = container.scrollHeight;
+}
+
+function renderHistory(){
+  const allMsgs = [];
+  Object.values(conversations).forEach(c => { if(c.messages) allMsgs.push(...c.messages); });
+  const msgs = currentConvId && conversations[currentConvId] ? conversations[currentConvId].messages : allMsgs;
+  const list = document.getElementById('historyList');
+  const userMsgs = msgs.filter(m=>m.role==='user');
+  if(userMsgs.length===0){ list.innerHTML='<div style="font-size:12px;color:rgba(255,255,255,0.25);padding:6px 12px">Sin conversaciones aún</div>'; return; }
+  list.innerHTML = userMsgs.slice(-5).reverse().map(m=>`
+    <div class="history-item" onclick="showChat()">${escHtml(m.content.substring(0,40))}${m.content.length>40?'…':''}</div>
+  `).join('');
+}
+
+function cleanASCIICharts(text) {
+  // 1. Eliminar bloques de codigo que contengan barras ASCII
+  const tripleBacktick = String.fromCharCode(96,96,96);
+  const reBlock = new RegExp(tripleBacktick + '[\\s\\S]*?' + tripleBacktick, 'g');
+  text = text.replace(reBlock, (block) => {
+    if (/[█▓░]/.test(block) || /[A-Z].{2,}\s+[█=\-|]{3,}/.test(block)) return '';
+    return block;
   });
-});
 
-// Servir íconos embebidos
-app.get('/icons/icon-192.png', (req, res) => {
-  res.setHeader('Content-Type', 'image/png');
-  res.send(Buffer.from('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', 'base64'));
-});
-app.get('/icons/icon-512.png', (req, res) => {
-  res.setHeader('Content-Type', 'image/png');
-  res.send(Buffer.from('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', 'base64'));
-});
+  // 2. Eliminar línea por línea todo lo que parezca barra ASCII
+  const lines = text.split('\n');
+  const result = [];
+  let skipNext = 0;
 
-// ---- Service Worker ----
-app.get('/sw.js', (req, res) => {
-  res.setHeader('Content-Type', 'application/javascript');
-  res.send(`
-const CACHE = 'aviva-v3';
-const ASSETS = ['/', '/index.html', '/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png'];
-self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));
-  self.skipWaiting();
-});
-self.addEventListener('activate', e => {
-  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))));
-  self.clients.claim();
-});
-self.addEventListener('fetch', e => {
-  if (e.request.url.includes('/api/')) return;
-  e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)));
-});
-  `);
-});
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
 
-// ---- Catch-all ----
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
+    // Saltar líneas marcadas
+    if (skipNext > 0) { skipNext--; continue; }
 
-// ---- Arrancar ----
-initDB().then(() => {
-  app.listen(PORT, () => {
-    console.log(`\n🌿 AAVIVA — Servidor corriendo en http://localhost:${PORT}`);
-    console.log(`   Panel admin: http://localhost:${PORT}  (usuario SISTEMAS1900)`);
-    console.log(`   Base de datos: ${pool ? '✅ PostgreSQL persistente' : '⚠️  Memoria (no persiste)'}\n`);
+    // Detectar cualquier línea con caracteres de barra
+    if (/[█▓░]/.test(line)) { skipNext = 1; continue; }
+
+    // Detectar patrón: TEXTO [espacios] BARRAS [espacios] VALOR
+    if (/^.{2,40}\s{1,5}[█=\-|]{3,}/.test(line)) { skipNext = 1; continue; }
+
+    // Detectar líneas de escala: "0% 5% 10% 15% 20%"
+    if (/^\s*(\d+%\s+){2,}\d+%\s*$/.test(line)) continue;
+
+    // Detectar separadores de gráfica
+    if (/^[=\-─]{5,}$/.test(line.trim())) continue;
+
+    // Detectar líneas tipo eje: "|" al inicio
+    if (/^\s*[│|]/.test(line) && line.length > 3) continue;
+
+    result.push(line);
+  }
+
+  return result.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+// Contador global para IDs únicos de gráficas
+let chartIdCounter = 0;
+const chartInstances = {};
+
+function renderChart(chartData, containerId){
+  const c = document.getElementById(containerId);
+  if(!c) return;
+  const labels = chartData.labels || [];
+  const datasets = chartData.datasets || [];
+  const type = chartData.type || 'bar';
+  if(chartInstances[containerId]){ chartInstances[containerId].destroy(); }
+  const vivaColors = [
+    'rgba(107,191,62,0.85)','rgba(30,107,46,0.85)','rgba(74,154,32,0.85)',
+    'rgba(162,213,100,0.85)','rgba(20,80,30,0.85)','rgba(200,230,150,0.85)',
+    'rgba(50,140,60,0.85)','rgba(130,200,80,0.85)'
+  ];
+  const borderColors = vivaColors.map(c=>c.replace('0.85','1'));
+  const ds = datasets.map((d,i)=>({
+    label: d.label||'',
+    data: d.data||[],
+    backgroundColor: type==='line'? vivaColors[i%vivaColors.length] : labels.map((_,j)=>vivaColors[j%vivaColors.length]),
+    borderColor: type==='line'? borderColors[i%borderColors.length] : borderColors.map((_,j)=>borderColors[j%borderColors.length]),
+    borderWidth: type==='line'?2.5:1.5,
+    fill: type==='line'?false:undefined,
+    tension: 0.4,
+    borderRadius: type==='bar'?6:0,
+    pointRadius: type==='line'?5:undefined,
+    pointBackgroundColor: type==='line'?'#1E6B2E':undefined,
+  }));
+  chartInstances[containerId] = new Chart(c, {
+    type: type,
+    data: { labels, datasets: ds },
+    options: {
+      responsive:true, maintainAspectRatio:true,
+      plugins:{
+        legend:{ display: datasets.length>1, labels:{ font:{family:'Outfit',size:12}, color:'#2d4a20' } },
+        tooltip:{ callbacks:{ label: ctx => ` ${ctx.dataset.label||''}: ${typeof ctx.parsed.y==='number'?ctx.parsed.y.toLocaleString('es-MX'):ctx.parsed}` } }
+      },
+      scales: (type==='pie'||type==='doughnut') ? {} : {
+        x:{ ticks:{font:{family:'Outfit',size:11},color:'#4a6a3a'}, grid:{display:false} },
+        y:{ ticks:{font:{family:'Outfit',size:11},color:'#4a6a3a', callback:v=>typeof v==='number'?v.toLocaleString('es-MX'):v}, grid:{color:'rgba(107,191,62,0.1)'} }
+      }
+    }
   });
-});
+}
+
+function buildChartHTML(chartData, id){
+  const tipos = [
+    {k:'bar',label:'Barras'},
+    {k:'line',label:'Línea'},
+    {k:'pie',label:'Pastel'},
+    {k:'doughnut',label:'Dona'},
+    {k:'polarArea',label:'Polar'},
+    {k:'radar',label:'Radar'},
+  ];
+  const btns = tipos.map(t=>`<button class="chart-type-btn${t.k===chartData.type?' active':''}" onclick="switchChartType('${id}','${t.k}',this)">${t.label}</button>`).join('');
+  return `<div class="chart-container">
+    <div class="chart-title">${escHtml(chartData.title||'Gráfica')}</div>
+    <div class="chart-type-btns">${btns}</div>
+    <canvas id="${id}"></canvas>
+  </div>`;
+}
+
+function switchChartType(id, type, btn){
+  if(!chartInstances[id]) return;
+  const data = chartInstances[id].data;
+  chartInstances[id].destroy();
+  const btns = btn.closest('.chart-type-btns').querySelectorAll('.chart-type-btn');
+  btns.forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  const canvas = document.getElementById(id);
+  chartInstances[id] = new Chart(canvas, {
+    type: type,
+    data: data,
+    options: chartInstances[id]?.options || {}
+  });
+  // Re-render usando los datos guardados
+  const stored = window._chartDataStore && window._chartDataStore[id];
+  if(stored){ stored.type = type; renderChart(stored, id); }
+}
+
+window._chartDataStore = {};
+
+function formatMsg(text){
+  // Eliminar bloques de gráficas ASCII (barras de texto con █ ▓ ░ o guiones)
+  // Eliminar líneas que contengan múltiples █ o patrones de barra ASCII
+  text = text.replace(/^.*█+.*$/gm, '');
+  text = text.replace(/^.*▓+.*$/gm, '');
+  text = text.replace(/^.*░+.*$/gm, '');
+  // Eliminar líneas de escala como "0% 5% 10% 15% 20%"
+  text = text.replace(/^(\s*\d+%\s+){2,}.*$/gm, '');
+  // Eliminar líneas con patrón de barra: TEXTO ===+ o TEXTO ---+
+  text = text.replace(/^.{3,}\s[=─—]{4,}.*$/gm, '');
+  // Eliminar bloques de código que contengan gráficas ASCII (entre ```)
+  text = text.replace(/```[\s\S]*?```/g, (block) => {
+    if(block.includes('█') || block.includes('▓') || block.includes('░')) return '';
+    return block;
+  });
+  // Limpiar líneas vacías múltiples
+  text = text.replace(/\n{3,}/g, '\n\n');
+
+  // Si es JSON con estructura excel, extraer solo el texto
+  try {
+    const jsonMatch = text.match(/\{[\s\S]*"texto"\s*:[\s\S]*\}/);
+    if(jsonMatch){
+      const parsed = JSON.parse(jsonMatch[0]);
+      if(parsed.texto) text = parsed.texto;
+    }
+  } catch(e){}
+
+  // Detectar bloques %%CHART%% y reemplazar por canvas
+  text = text.replace(/%%CHART%%([\s\S]*?)%%CHART%%/g, (match, jsonStr) => {
+    try {
+      const chartData = JSON.parse(jsonStr.trim());
+      const id = 'chart_' + (++chartIdCounter);
+      window._chartDataStore[id] = chartData;
+      const html = buildChartHTML(chartData, id);
+      // Render después de que el DOM se actualice
+      setTimeout(()=>renderChart(chartData, id), 80);
+      return html;
+    } catch(e){ return ''; }
+  });
+
+  // Renderizar tablas markdown | col | col | + auto-generar gráfica
+  text = text.replace(/\|(.+)\|\n\|[-| :]+\|\n((?:\|.+\|\n?)*)/g, (match, header, rows) => {
+    const headers = header.split('|').map(h=>h.trim()).filter(Boolean);
+    const headerHTML = '<tr>' + headers.map(h=>`<th>${escHtml(h)}</th>`).join('') + '</tr>';
+    const parsedRows = rows.trim().split('\n').map(row =>
+      row.split('|').map(c=>c.trim()).filter(Boolean)
+    );
+    const rowsHTML = parsedRows.map(cells =>
+      '<tr>' + cells.map(c=>`<td>${escHtml(c)}</td>`).join('') + '</tr>'
+    ).join('');
+    const tableHTML = `<div style="overflow-x:auto;margin:10px 0"><table>${headerHTML}${rowsHTML}</table></div>`;
+
+    // Auto-generar gráfica si hay al menos 2 columnas y 2+ filas con números
+    try {
+      // Función robusta para parsear números con comas, $, %
+      const parseNum = v => {
+        if(!v) return null;
+        const clean = String(v).replace(/[$\s]/g,'').replace(/,/g,'').replace(/%$/,'').trim();
+        const n = parseFloat(clean);
+        return isNaN(n) ? null : n;
+      };
+      const numColIdx = headers.findIndex((h,i) => i>0 && parsedRows.some(r => parseNum(r[i]) !== null));
+      // Encontrar columna de etiqueta (primera con valores de texto)
+      const labelColIdx = (() => {
+        for(let i=0; i<headers.length; i++){
+          const vals = parsedRows.map(r => r[i]||'');
+          const hasText = vals.some(v => parseNum(v) === null);
+          if(hasText) return i;
+        }
+        return 0;
+      })();
+
+      // Encontrar columnas numéricas (excluir la de etiqueta y columnas tipo ranking/posicion)
+      const numCols = headers.map((h,i) => {
+        if(i === labelColIdx) return null;
+        // Saltar columnas de ranking/posicion (solo contienen 1,2,3,4...)
+        const vals = parsedRows.map(r => parseNum(r[i]));
+        const realVals = vals.filter(v => v !== null);
+        if(realVals.length === 0) return null;
+        // Si todos los valores son enteros pequeños (1-20), probablemente es ranking
+        const isRanking = realVals.every(v => v === Math.floor(v) && v >= 1 && v <= 50) && realVals.length === parsedRows.length;
+        const maxVal = Math.max(...realVals);
+        // Si el max es muy pequeño comparado con otros, podría ser días/porcentaje
+        if(isRanking && maxVal <= 20) return null;
+        const hasNums = realVals.some(v => v !== 0);
+        return hasNums ? {label: h, data: vals.map(v => v || 0)} : null;
+      }).filter(Boolean);
+
+      if(numCols.length > 0 && parsedRows.length >= 2){
+        const labels = parsedRows.map(r => r[labelColIdx] || '');
+        // Tomar solo las primeras 2 columnas numéricas para no sobrecargar la gráfica
+        const chartCols = numCols.slice(0,2);
+
+        if(chartCols.length > 0){
+          const id = 'chart_' + (++chartIdCounter);
+          const chartData = {
+            title: headers[labelColIdx] + ' — ' + chartCols.map(c=>c.label).join(', '),
+            type: 'bar',
+            labels: labels,
+            datasets: chartCols
+          };
+          window._chartDataStore[id] = chartData;
+          setTimeout(()=>renderChart(chartData, id), 120);
+          return tableHTML + buildChartHTML(chartData, id);
+        }
+      }
+    } catch(e){}
+    return tableHTML;
+  });
+
+  // Encabezados ##
+  text = text.replace(/^### (.+)$/gm, '<h4 style="color:#1E6B2E;font-size:14px;margin:10px 0 4px;font-weight:700">$1</h4>');
+  text = text.replace(/^## (.+)$/gm, '<h3 style="color:#1E6B2E;font-size:15px;margin:12px 0 5px;font-weight:700">$1</h3>');
+  text = text.replace(/^# (.+)$/gm, '<h2 style="color:#1E6B2E;font-size:16px;margin:12px 0 6px;font-weight:700">$1</h2>');
+
+  // Negritas e itálicas
+  text = text.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+  text = text.replace(/\*(.+?)\*/g,'<em>$1</em>');
+
+  // Listas con guiones o asteriscos
+  text = text.replace(/^[\-\*] (.+)$/gm, '<li style="margin:3px 0;padding-left:4px">$1</li>');
+  text = text.replace(/(<li[^>]*>.*<\/li>\n?)+/g, m => `<ul style="margin:8px 0;padding-left:20px">${m}</ul>`);
+
+  // Listas numeradas
+  text = text.replace(/^(\d+)\. (.+)$/gm, '<li style="margin:3px 0">$2</li>');
+
+  // Código inline
+  text = text.replace(/`([^`]+)`/g, '<code style="background:#f0f7e8;padding:2px 6px;border-radius:4px;font-family:monospace;font-size:13px">$1</code>');
+
+  // Párrafos
+  text = text.replace(/\n\n/g, '</p><p style="margin:6px 0">');
+  text = text.replace(/\n/g,'<br>');
+  text = '<p style="margin:0">' + text + '</p>';
+
+  return text;
+}
+
+function escHtml(t){ return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// Archivos subidos en la conversación actual (para análisis)
+let pendingFiles = [];
+
+async function handleFileUpload(input) {
+  const files = Array.from(input.files);
+  if (!files.length) return;
+
+  for (const file of files) {
+    const ext = file.name.split('.').pop().toLowerCase();
+    const isQAD = ['xlsx','xls','csv'].includes(ext);
+    const isImage = ['png','jpg','jpeg','gif','webp'].includes(ext);
+    const isPDF = ext === 'pdf';
+
+    if (isQAD) {
+      // Subir a servidor para QAD
+      await uploadQADFiles([file]);
+    } else if (isImage || isPDF) {
+      // Leer como base64 para enviar a AVIVA
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const base64 = e.target.result;
+        pendingFiles.push({ name: file.name, type: file.type, base64, isImage, isPDF });
+        // Mostrar preview en el chat
+        if (isImage) {
+          const msg = `<div style="margin:4px 0"><img src="${base64}" style="max-width:220px;max-height:180px;border-radius:10px;display:block"/><span style="font-size:11px;opacity:0.6">${file.name}</span></div>`;
+          appendMsgHTML('user', msg);
+        } else {
+          appendMsg('user', `📄 ${file.name} (PDF adjunto)`);
+        }
+        showToast(`✅ ${file.name} listo — presiona enviar para que AVIVA lo analice`, 'success');
+      };
+      reader.readAsDataURL(file);
+    }
+  }
+  input.value = '';
+}
+
+async function uploadQADFiles(files) {
+  const fileList = files instanceof FileList ? Array.from(files) : files;
+  const names = fileList.map(f=>f.name).join(', ');
+  showToast('⏳ Subiendo archivos QAD...', 'success');
+
+  const adminStatus = document.getElementById('qadUploadStatus');
+  if(adminStatus) adminStatus.innerHTML = `<span style="color:#6BBF3E">⏳ Subiendo: ${names}</span>`;
+
+  const formData = new FormData();
+  for (const f of fileList) formData.append('files', f);
+
+  try {
+    const res = await fetch('/api/qad/upload', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (data.ok) {
+      showToast(`✅ ${data.files} archivo(s) QAD cargados`, 'success');
+      if(adminStatus) adminStatus.innerHTML = `<span style="color:#6BBF3E">✅ ${data.files} archivo(s) · ${data.sheets} hojas · ${new Date().toLocaleTimeString('es-MX')}</span>`;
+      const chatArea = document.getElementById('chatArea');
+      if(chatArea && chatArea.style.display !== 'none') {
+        appendMsg('aviva', `✅ Datos QAD cargados: ${names}\n📊 ${data.sheets} hojas procesadas. Ya puedo responder con estos datos.`);
+      }
+    } else {
+      showToast('❌ Error al cargar archivos QAD', 'error');
+      if(adminStatus) adminStatus.innerHTML = `<span style="color:#e53e3e">❌ Error al cargar</span>`;
+    }
+  } catch(e) {
+    showToast('❌ Error de conexión', 'error');
+    if(adminStatus) adminStatus.innerHTML = `<span style="color:#e53e3e">❌ Error de conexión</span>`;
+  }
+}
+
+function appendMsgHTML(role, html) {
+  if(!currentConvId) { currentConvId = genConvId(); conversations[currentConvId]={title:'Nueva conversación',messages:[],updatedAt:new Date().toISOString()}; }
+  const wrap = document.getElementById('messagesWrap');
+  if(!wrap) return;
+  const div = document.createElement('div');
+  div.className = `msg msg-${role}`;
+  div.innerHTML = `<div class="msg-bubble">${html}</div>`;
+  wrap.appendChild(div);
+  wrap.scrollTop = wrap.scrollHeight;
+}
+
+async function clearQADData(){
+  try {
+    await fetch('/api/qad/clear', {method:'DELETE'});
+    showToast('🗑️ Datos QAD eliminados','success');
+    const s = document.getElementById('qadUploadStatus');
+    if(s) s.innerHTML = '<span style="color:#6a7060">Sin datos cargados</span>';
+  } catch(e){ showToast('Error al limpiar','error'); }
+}
+
+async function checkQADStatus(){
+  try {
+    const res = await fetch('/api/qad/status');
+    const d = await res.json();
+    const s = document.getElementById('qadUploadStatus');
+    if(d.hasData){
+      const msg = `✅ Datos disponibles · ${d.totalRecords} registros · ${d.sheets.length} hojas · Actualizado: ${d.lastUpdate ? new Date(d.lastUpdate).toLocaleString('es-MX') : 'N/A'}`;
+      if(s) s.innerHTML = `<span style="color:#6BBF3E">${msg}</span>`;
+      showToast(msg, 'success');
+    } else {
+      if(s) s.innerHTML = '<span style="color:#f59e0b">⚠️ Sin datos QAD cargados</span>';
+      showToast('Sin datos QAD cargados aún','error');
+    }
+  } catch(e){ showToast('Error al verificar estado','error'); }
+}
+
+function autoResize(el){ el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,160)+'px'; }
+function handleKey(e){ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); sendMessage(); } }
+
+function sendChip(text){ document.getElementById('msgInput').value=text; sendMessage(); }
+
+async function sendMessage(){
+  const input = document.getElementById('msgInput');
+  const text = input.value.trim();
+  if(!text||!currentUser) return;
+  input.value=''; input.style.height='auto';
+  document.getElementById('sendBtn').disabled=true;
+
+  const time = new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
+  if(!currentConvId) { currentConvId = genConvId(); conversations[currentConvId]={title:text.substring(0,60),messages:[]}; }
+  if(!conversations[currentConvId]) conversations[currentConvId]={title:text.substring(0,60),messages:[]};
+  conversations[currentConvId].messages.push({role:'user',content:text,time});
+  if(!conversations[currentConvId].title || conversations[currentConvId].title==='Nueva conversación'){
+    conversations[currentConvId].title = text.substring(0,60);
+  }
+  renderMessages();
+  logActivity(`Consulta de ${currentUser.username}: ${text.substring(0,50)}`);
+  queryCount++;
+
+  // Show typing
+  const container = document.getElementById('chatMessages');
+  const typingEl = document.createElement('div');
+  typingEl.className='msg assistant'; typingEl.id='typingMsg';
+  typingEl.innerHTML=`<div class="msg-avatar">V</div><div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>`;
+  container.appendChild(typingEl);
+  container.scrollTop=container.scrollHeight;
+
+  try{
+    const history = (conversations[currentConvId]?.messages || []).slice(-10).map(m=>({role:m.role,content:m.content}));
+    const qadContext = buildQADContext();
+    const reply = await callAVIVA(history, qadContext);
+    typingEl.remove();
+    const rTime = new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
+    // Detectar si la respuesta tiene datos Excel con %%EXCEL%%
+    let displayReply = reply;
+    try {
+      const excelMatch = reply.match(/%%EXCEL%%([\s\S]*?)%%EXCEL%%/);
+      if(excelMatch){
+        const excelJson = JSON.parse(excelMatch[1]);
+        lastExcelData = excelJson;
+        displayReply = reply.replace(/%%EXCEL%%[\s\S]*?%%EXCEL%%/, '').trim();
+        setTimeout(() => showExcelReady(excelJson.titulo || 'Reporte'), 500);
+      }
+    } catch(e){}
+
+    // Limpiar cualquier JSON crudo que la IA haya generado sin marcadores
+    try {
+      // Detectar bloques JSON grandes con "hojas", "columnas", "filas" — son datos Excel crudos
+      displayReply = displayReply.replace(/\{[\s\S]*?"hojas"[\s\S]*?"columnas"[\s\S]*?\}/g, '');
+      displayReply = displayReply.replace(/\{[\s\S]*?"filas"[\s\S]*?"columnas"[\s\S]*?\}/g, '');
+      displayReply = displayReply.replace(/\{[\s\S]*?"titulo"[\s\S]*?"hojas"[\s\S]*?\}/g, '');
+      // Limpiar solo bloques JSON grandes, NUNCA tocar tablas markdown ni texto normal
+      // Solo eliminar si hay un bloque JSON completo con hojas/columnas/filas
+      displayReply = displayReply
+        .replace(/\{[^{}]*"hojas"[^{}]*\[[\s\S]*?\]\s*\}/g, '')
+        .replace(/\{[^{}]*"columnas"[\s\S]*?"filas"[\s\S]*?\}/g, '')
+        .replace(/\n{3,}/g, '\n\n').trim();
+    } catch(e){}
+
+    // Limpiar gráficas ASCII antes de guardar y mostrar
+    displayReply = cleanASCIICharts(displayReply);
+
+    conversations[currentConvId].messages.push({role:'assistant',content:displayReply,time:rTime});
+    conversations[currentConvId].updatedAt = new Date().toISOString();
+    renderMessages();
+    renderHistory();
+    speakText(displayReply);
+    saveCurrentConv();
+    // Detectar y guardar preferencias del usuario
+    detectAndSaveMemory(text, displayReply);
+  }catch(e){
+    typingEl.remove();
+    const errTime = new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
+    if(currentConvId && conversations[currentConvId]) conversations[currentConvId].messages.push({role:'assistant',content:'Lo siento, ocurrió un error al procesar tu consulta. Por favor intenta nuevamente.',time:errTime});
+    renderMessages();
+  }
+  document.getElementById('sendBtn').disabled=false;
+}
+
+function buildQADContext(){
+  const cfg = QAD_CONFIG;
+  if(!cfg.url) return 'El sistema QAD aún no está configurado. El administrador debe ingresar las credenciales en el Panel de Sistemas.';
+  return `Tienes acceso al sistema QAD de Vivatex (${cfg.company||'Grupo Vivatex'}). URL: ${cfg.url}. Cuando el usuario pregunte por datos, indícale que los datos provienen directamente del sistema QAD en tiempo real.`;
+}
+
+// Datos del último Excel generado por AVIVA
+let lastExcelData = null;
+
+async function callAVIVA(history, qadContext){
+  // Cargar memoria del usuario
+  const userMemory = localStorage.getItem('aviva_memory_' + currentUser.username);
+  const memoryContext = userMemory ? `\n\nMEMORIA DEL USUARIO (recuerda siempre esto):\n${userMemory}` : '';
+
+  const systemPrompt = `Eres AVIVA, la asistente de inteligencia artificial de Grupo Vivatex S.A. de C.V., una empresa textilera mexicana de clase mundial.
+
+PERSONALIDAD:
+- Extremadamente profesional, ejecutiva y precisa
+- Respuestas en español, claras y directas
+- Nivel CEO internacional — presentas datos de forma impecable
+- Firma: "AVIVA · Inteligencia Vivatex"
+- IMPORTANTE: Si el usuario te dice cómo quiere que lo llames o alguna preferencia personal, guárdala mencionando "Lo recordaré siempre" y úsala en toda la conversación${memoryContext}
+
+FORMATO DE RESPUESTA — REGLAS ABSOLUTAS OBLIGATORIAS:
+- Responde SIEMPRE en español, claro y profesional
+- OBLIGATORIO: cuando presentes 2 o más registros de datos, SIEMPRE usa TABLA MARKDOWN exactamente así:
+  | Columna 1 | Columna 2 | Columna 3 |
+  |-----------|-----------|-----------|
+  | dato1     | dato2     | dato3     |
+- Las tablas markdown SE CONVIERTEN AUTOMÁTICAMENTE en tablas visuales en la interfaz
+- Las gráficas SE GENERAN AUTOMÁTICAMENTE de tus tablas — no las hagas manualmente
+- NUNCA uses JSON, arrays [ ], objetos { } para mostrar datos
+- NUNCA hagas barras de texto con caracteres como █ ▓ ░ = -
+- NUNCA digas que no tienes datos si ya los recibiste en el contexto — ÚSALOS
+- Usa **negritas** para cifras importantes
+- Usa ## para títulos de secciones
+
+CUANDO EL USUARIO PIDA UN EXCEL, REPORTE O DOCUMENTO DESCARGABLE:
+Responde primero con el análisis completo en texto y tablas markdown, luego al FINAL agrega el bloque %%EXCEL%% con esta estructura profesional:
+%%EXCEL%%{
+  "titulo": "Nombre del reporte",
+  "subtitulo": "Descripción breve",
+  "periodo": "Mayo 2026",
+  "hojas": [
+    {
+      "nombre": "📊 Nombre Hoja",
+      "columnas": ["Col1","Col2","Col3"],
+      "filas": [["val1",1234,0.95],["val2",5678,0.87]],
+      "totales": ["TOTAL","6912",""],
+      "tipo_grafica": "bar"
+    }
+  ]
+}%%EXCEL%%
+
+REGLAS DEL EXCEL:
+- tipo_grafica puede ser: "bar", "line", "pie", "bar_stacked" o null
+- Los valores numéricos van SIN $ ni % ni comas — solo el número: 1234.56 no "$1,234.56"
+- Para porcentajes usa el decimal: 0.9504 para 95.04%
+- Puedes incluir múltiples hojas
+- El nombre de hoja puede tener emoji: "📊 Ventas", "📈 Producción", "✅ Indicadores"
+
+CAPACIDADES:
+- Analizar datos de ventas, inventario, finanzas, producción, clientes de QAD
+- Mostrar tablas bonitas y comparativas en el chat
+- Generar gráficas interactivas (barras, línea, pastel, dona, polar, radar) directamente en el chat
+- Generar reportes Excel profesionales descargables cuando se pidan
+- Analizar imágenes y documentos adjuntos
+- Calcular totales, promedios, variaciones, rankings
+- Recordar preferencias del usuario
+
+Contexto QAD: ${qadContext}
+
+NUNCA menciones Claude ni Anthropic. Eres AVIVA, creada para Grupo Vivatex S.A. de C.V.
+IMPORTANTE SOBRE LOS DATOS QAD:
+- Si recibes datos en el contexto, ÚSALOS DIRECTAMENTE — nunca digas que no tienes acceso
+- Los datos son REALES y COMPLETOS — no necesitas credenciales adicionales
+- SIEMPRE presenta los datos en tablas markdown con todos los valores numéricos
+- NUNCA digas "necesito activar credenciales" o "no tengo acceso" si ya tienes datos
+- Los datos tienen fecha de carga (uploadDate) — úsala para identificar qué tan reciente es la información
+- Si un cliente aparece en datos del 24 de mayo pero NO en datos del 25, significa que sigue activo/pendiente — NO asumas que pagó
+- Cuando compares períodos, muestra TODOS los registros de todos los archivos disponibles
+- Para saldos y cartera: si un cliente no aparece en el archivo más reciente pero sí en uno anterior, indícalo como "dato del [fecha anterior]"`;
+
+  const response = await fetch('/api/chat', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({messages:history, system:systemPrompt, username: currentUser?.username || ''})
+  });
+  if(!response.ok) throw new Error('API error');
+  const data = await response.json();
+  const reply = data.reply;
+
+  // Intentar parsear si viene con datos Excel
+  try {
+    const jsonMatch = reply.match(/\{[\s\S]*\}/);
+    if(jsonMatch){
+      const parsed = JSON.parse(jsonMatch[0]);
+      if(parsed.excel && parsed.texto){
+        lastExcelData = parsed.excel;
+        // Mostrar botón de descarga Excel específico
+        showExcelReady(parsed.excel.titulo);
+        return parsed.texto;
+      }
+    }
+  } catch(e){}
+
+  lastExcelData = null;
+  return reply;
+}
+
+function showExcelReady(titulo){
+  // Mostrar notificación con botón de descarga
+  const notif = document.createElement('div');
+  notif.style.cssText = 'position:fixed;bottom:90px;right:20px;background:#1a1f16;color:#6BBF3E;border:1.5px solid #6BBF3E;border-radius:12px;padding:12px 18px;font-size:13px;font-weight:600;cursor:pointer;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,0.3);display:flex;align-items:center;gap:10px;';
+  notif.innerHTML = `<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg> Descargar Excel: ${titulo}`;
+  notif.onclick = () => { downloadVivaExcel(); notif.remove(); };
+  document.body.appendChild(notif);
+  setTimeout(() => { if(notif.parentNode) notif.remove(); }, 15000);
+}
+
+// ===== EXPORT =====
+async function downloadVivaExcel(){
+  if(!lastExcelData){ showToast('No hay datos Excel generados aún','error'); return; }
+  showToast('⏳ Generando Excel profesional Vivatex...', 'success');
+  try {
+    const res = await fetch('/api/excel/generate', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        titulo: lastExcelData.titulo || 'Reporte AVIVA',
+        subtitulo: lastExcelData.subtitulo || 'Reporte Ejecutivo',
+        periodo: lastExcelData.periodo || new Date().toLocaleDateString('es-MX',{year:'numeric',month:'long'}),
+        confidencial: 'Confidencial · Uso exclusivo Dirección General',
+        resumen: lastExcelData.resumen || null,
+        usuario: currentUser?.username || '',
+        hojas: lastExcelData.hojas
+      })
+    });
+    const data = await res.json();
+    if(data.ok && data.base64){
+      // Descargar el Excel
+      const bytes = atob(data.base64);
+      const arr = new Uint8Array(bytes.length);
+      for(let i=0; i<bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+      const blob = new Blob([arr], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = data.filename;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('✅ Excel profesional descargado', 'success');
+    } else {
+      throw new Error(data.error || 'Error generando');
+    }
+  } catch(e) {
+    // Fallback a XLSX.js si falla el servidor
+    showToast('⚠️ Usando modo básico...', 'success');
+    const wb = XLSX.utils.book_new();
+    lastExcelData.hojas.forEach(hoja => {
+      const rows = [
+        ['GRUPO VIVATEX S.A. DE C.V.'],
+        [lastExcelData.titulo || 'Reporte'],
+        [],
+        hoja.columnas || [],
+        ...(hoja.filas || []),
+        ...(hoja.totales ? [[], hoja.totales] : [])
+      ];
+      const ws = XLSX.utils.aoa_to_sheet(rows);
+      ws['!cols'] = (hoja.columnas||[]).map(() => ({wch:20}));
+      XLSX.utils.book_append_sheet(wb, ws, (hoja.nombre||'Datos').substring(0,31));
+    });
+    const filename = `Vivatex_${new Date().toISOString().split('T')[0]}.xlsx`;
+    XLSX.writeFile(wb, filename);
+    showToast('✅ Excel descargado', 'success');
+  }
+}
+
+function exportExcel(){
+  // Si hay datos dinámicos de AVIVA, descargar esos
+  if(lastExcelData){ downloadVivaExcel(); return; }
+  // Si no, exportar conversación
+  const allMsgs = [];
+  Object.values(conversations).forEach(c => { if(c.messages) allMsgs.push(...c.messages); });
+  const msgs = currentConvId && conversations[currentConvId] ? conversations[currentConvId].messages : allMsgs;
+  if(!msgs.length){ showToast('No hay datos para exportar','error'); return; }
+  const wb = XLSX.utils.book_new();
+  const rows = [
+    ['GRUPO VIVATEX S.A. DE C.V.','',''],
+    ['Conversación con AVIVA','',''],
+    ['Fecha:', new Date().toLocaleDateString('es-MX'),''],
+    ['Usuario:', currentUser.username,''],
+    ['','',''],
+    ['REMITENTE','MENSAJE','HORA'],
+    ...msgs.map(m=>[m.role==='user'?currentUser.username:'AVIVA',m.content,m.time])
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols']=[{wch:20},{wch:90},{wch:12}];
+  XLSX.utils.book_append_sheet(wb, ws, 'Conversación');
+  XLSX.writeFile(wb, `AVIVA_${currentUser.username}_${new Date().toISOString().split('T')[0]}.xlsx`);
+  showToast('✅ Excel exportado','success');
+}
+
+function exportPDF(){
+  const allMsgs = [];
+  Object.values(conversations).forEach(c => { if(c.messages) allMsgs.push(...c.messages); });
+  const msgs = currentConvId && conversations[currentConvId] ? conversations[currentConvId].messages : allMsgs;
+  if(!msgs.length){ showToast('No hay conversación para exportar','error'); return; }
+  const {jsPDF} = window.jspdf;
+  const doc = new jsPDF();
+  doc.setFontSize(18); doc.setTextColor(74,154,32);
+  doc.text('VIVA — Conversación Vivatex',14,20);
+  doc.setFontSize(10); doc.setTextColor(100);
+  doc.text(`Usuario: ${currentUser.username} | Fecha: ${new Date().toLocaleDateString('es-MX')}`,14,28);
+  doc.autoTable({
+    startY:34,
+    head:[['Rol','Mensaje','Hora']],
+    body: msgs.map(m=>[m.role==='user'?currentUser.username:'AVIVA',m.content.substring(0,200),m.time]),
+    headStyles:{fillColor:[74,154,32],textColor:255,fontSize:10},
+    bodyStyles:{fontSize:9,textColor:40},
+    alternateRowStyles:{fillColor:[244,250,240]},
+    styles:{cellPadding:4,overflow:'linebreak'},
+    columnStyles:{0:{cellWidth:30},2:{cellWidth:18}}
+  });
+  doc.save(`AVIVA_${currentUser.username}_${new Date().toISOString().split('T')[0]}.pdf`);
+  showToast('PDF exportado','success');
+}
+
+// ===== ADMIN =====
+function renderUsersTable(){
+  const tbody = document.getElementById('usersTableBody');
+  tbody.innerHTML = USERS.map(u=>`
+    <tr>
+      <td><strong>${u.username}</strong></td>
+      <td><span class="badge ${u.role==='admin'?'badge-blue':'badge-gray'}">${u.role==='admin'?'Sistemas':'Usuario'}</span></td>
+      <td><span class="badge ${u.active?'badge-green':'badge-gray'}">${u.active?'Activo':'Inactivo'}</span></td>
+      <td>
+        <button class="action-btn" onclick="editUser(${u.id})">Editar</button>
+        <button class="action-btn ${u.active?'danger':''}" onclick="toggleUser(${u.id})">${u.active?'Desactivar':'Activar'}</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function uploadQADPDFs(files){
+  if(!files || files.length === 0) return;
+  const statusEl = document.getElementById('qadUploadStatus');
+  if(statusEl) statusEl.textContent = '⏳ Subiendo PDFs...';
+  for(const file of files){
+    const formData = new FormData();
+    formData.append('pdf', file);
+    try {
+      const res = await fetch('/api/qad/upload-pdf', {method:'POST', body: formData});
+      const data = await res.json();
+      if(data.ok) showToast(`✅ PDF "${file.name}" subido`, 'success');
+      else showToast(`❌ Error: ${data.error}`, 'error');
+    } catch(e){ showToast('Error subiendo PDF','error'); }
+  }
+  if(statusEl) statusEl.textContent = '✅ PDFs procesados';
+}
+
+async function migrateUsersToPostgres(){
+  showToast('⏳ Sincronizando usuarios...', 'success');
+  let ok = 0, fail = 0;
+  for(const u of USERS){
+    if(u.password === '****' || !u.password) continue; // skip usuarios sin contraseña conocida
+    try {
+      const res = await fetch('/api/usuarios', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({username: u.username, password: u.password, role: u.role})
+      });
+      const data = await res.json();
+      if(data.ok) ok++; else fail++;
+    } catch(e){ fail++; }
+  }
+  showToast(`✅ ${ok} usuarios sincronizados${fail>0?' | '+fail+' fallaron':''}`, 'success');
+}
+
+function openAddUser(){ editingUserId=null; document.getElementById('modalTitle').textContent='Agregar usuario'; document.getElementById('modalUser').value=''; document.getElementById('modalPass').value=''; document.getElementById('modalRole').value='user'; document.getElementById('userModal').classList.add('open'); }
+function editUser(id){ const u=USERS.find(x=>x.id===id); if(!u) return; editingUserId=id; document.getElementById('modalTitle').textContent='Editar usuario'; document.getElementById('modalUser').value=u.username; document.getElementById('modalPass').value=u.password==='****'?'':u.password; document.getElementById('modalPass').placeholder=u.password==='****'?'Ingresa nueva contraseña':'••••••••'; document.getElementById('modalRole').value=u.role; document.getElementById('userModal').classList.add('open'); }
+function closeModal(){ document.getElementById('userModal').classList.remove('open'); }
+
+async function saveUser(){
+  const username = document.getElementById('modalUser').value.trim().toUpperCase();
+  const password = document.getElementById('modalPass').value.trim();
+  const role = document.getElementById('modalRole').value;
+  if(!username||!password){ showToast('Completa todos los campos','error'); return; }
+  try {
+    const res = await fetch('/api/usuarios', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({username, password, role})
+    });
+    const data = await res.json();
+    if(!data.ok){ showToast('Error guardando usuario','error'); return; }
+  } catch(e){ showToast('Error de conexión','error'); return; }
+
+  if(editingUserId){
+    const u=USERS.find(x=>x.id===editingUserId);
+    if(u){ u.username=username; u.password=password; u.role=role; }
+    showToast('Usuario actualizado','success');
+    logActivity(`Usuario modificado: ${username}`);
+  } else {
+    const newId=Math.max(...USERS.map(u=>u.id))+1;
+    USERS.push({id:newId,username,password,role,active:true});
+    showToast('Usuario creado','success');
+    logActivity(`Usuario creado: ${username}`);
+  }
+  closeModal(); renderUsersTable();
+  document.getElementById('statUsers').textContent=USERS.filter(u=>u.active).length;
+}
+
+async function toggleUser(id){
+  const u=USERS.find(x=>x.id===id);
+  if(!u) return;
+  if(u.username==='SISTEMAS1900'){ showToast('No puedes desactivar el usuario de sistemas','error'); return; }
+  u.active=!u.active;
+  try {
+    if(!u.active){
+      await fetch('/api/usuarios/'+u.username, {method:'DELETE'});
+    } else {
+      await fetch('/api/usuarios', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({username:u.username,password:u.password,role:u.role})});
+    }
+  } catch(e){ console.warn('Error toggling user:', e); }
+  showToast(`Usuario ${u.active?'activado':'desactivado'}`,'success');
+  logActivity(`Usuario ${u.active?'activado':'desactivado'}: ${u.username}`);
+  renderUsersTable();
+}
+
+function saveQAD(){
+  QAD_CONFIG = {
+    url:document.getElementById('qadUrl').value,
+    port:document.getElementById('qadPort').value,
+    token:document.getElementById('qadToken').value,
+    company:document.getElementById('qadCompany').value,
+    user:document.getElementById('qadUser').value,
+    pass:document.getElementById('qadPass').value,
+  };
+  showToast('Configuración QAD guardada. Probando conexión…','success');
+  logActivity('Configuración QAD actualizada');
+  setTimeout(testQAD, 1000);
+}
+
+function testQAD(){
+  showToast('Probando conexión con QAD…');
+  setTimeout(()=>{
+    const connected = !!QAD_CONFIG.url;
+    document.getElementById('qadDot').className='qad-dot'+(connected?'':' offline');
+    document.getElementById('qadStatusLabel').textContent = connected ? 'QAD Enterprise — Conectado' : 'QAD — Sin configurar';
+    document.getElementById('qadStatusDetail').textContent = connected ? 'Última sincronización: hace unos momentos' : 'Configura la URL y credenciales en la pestaña Conexión QAD';
+    document.getElementById('statQAD').textContent = connected ? 'Conectado' : 'Pendiente';
+    document.getElementById('statQAD').style.color = connected ? 'var(--green)' : '#f59e0b';
+    document.getElementById('qadStatusText').textContent = connected ? 'Conectado a QAD' : 'QAD no configurado';
+    showToast(connected ? 'Conexión QAD exitosa' : 'Configura las credenciales QAD', connected?'success':'error');
+  },1500);
+}
+
+function logActivity(msg){
+  activityLogs.unshift({msg, time: new Date().toLocaleString('es-MX')});
+  if(activityLogs.length>100) activityLogs=activityLogs.slice(0,100);
+}
+
+function renderLogs(){
+  const c = document.getElementById('logsContainer');
+  if(!activityLogs.length){ c.innerHTML='<div style="color:#aab4a0;font-size:13px;text-align:center;padding:20px">Sin actividad registrada</div>'; return; }
+  c.innerHTML = activityLogs.slice(0,30).map(l=>`
+    <div class="log-entry">
+      <div>
+        <div>${escHtml(l.msg)}</div>
+        <div class="log-time">${l.time}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function clearLogs(){ activityLogs=[]; renderLogs(); showToast('Logs limpiados','success'); }
+
+// ===== TOAST =====
+function showToast(msg,type='success'){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.className=`toast ${type} show`;
+  setTimeout(()=>t.classList.remove('show'),3000);
+}
+
+// ===== PWA SERVICE WORKER =====
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('/sw.js').catch(()=>{});
+}
+
+// ============================================================
+// VOZ — Reconocimiento y síntesis de voz
+// ============================================================
+let recognition = null;
+let isListening = false;
+let synth = window.speechSynthesis;
+
+function toggleVoice(){
+  if(isListening){ stopListening(); return; }
+  startListening();
+}
+
+function startListening(){
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SpeechRecognition){ showToast('Tu navegador no soporta reconocimiento de voz','error'); return; }
+  recognition = new SpeechRecognition();
+  recognition.lang = 'es-MX';
+  recognition.continuous = false;
+  recognition.interimResults = false;
+  recognition.onstart = () => {
+    isListening = true;
+    document.getElementById('micBtn').classList.add('mic-active');
+    showToast('🎤 Escuchando... habla ahora','success');
+  };
+  recognition.onresult = (e) => {
+    const text = e.results[0][0].transcript;
+    document.getElementById('msgInput').value = text;
+    stopListening();
+    sendMessage();
+  };
+  recognition.onerror = () => { stopListening(); showToast('Error al escuchar, intenta de nuevo','error'); };
+  recognition.onend = () => { stopListening(); };
+  recognition.start();
+}
+
+function stopListening(){
+  isListening = false;
+  document.getElementById('micBtn')?.classList.remove('mic-active');
+  if(recognition){ try{ recognition.stop(); }catch(e){} recognition = null; }
+}
+
+function detectAndSaveMemory(userMsg, avivReply) {
+  if (!currentUser) return;
+  const lower = userMsg.toLowerCase();
+  // Detectar preferencias de nombre/trato
+  const nameMatch = userMsg.match(/llámame\s+(\w+)|dime\s+(\w+)|soy\s+(\w+)|mi nombre es\s+(\w+)/i);
+  const treatMatch = userMsg.match(/trátame de\s+(\w+)|dime\s+(jefe|señor|doctor|licenciado|ingeniero|director|gerente)/i);
+  
+  if (nameMatch || treatMatch || lower.includes('recuerda que') || lower.includes('siempre') && lower.includes('dime')) {
+    const key = 'aviva_memory_' + currentUser.username;
+    const existing = localStorage.getItem(key) || '';
+    const timestamp = new Date().toLocaleDateString('es-MX');
+    let newMemory = existing;
+    
+    if (nameMatch) {
+      const name = nameMatch[1] || nameMatch[2] || nameMatch[3] || nameMatch[4];
+      newMemory += `\n- El usuario prefiere que lo llames "${name}" (desde ${timestamp})`;
+    }
+    if (treatMatch) {
+      const treat = treatMatch[1] || treatMatch[2];
+      newMemory += `\n- El usuario prefiere que lo trates como "${treat}" (desde ${timestamp})`;
+    }
+    if (lower.includes('recuerda que')) {
+      const idx = lower.indexOf('recuerda que') + 12;
+      const mem = userMsg.substring(idx, idx + 100).trim();
+      newMemory += `\n- Recuerda: ${mem} (desde ${timestamp})`;
+    }
+    
+    if (newMemory !== existing) {
+      localStorage.setItem(key, newMemory.trim());
+    }
+  }
+}
+
+function speakText(text){
+  if(!synth) return;
+  synth.cancel();
+  const clean = text.replace(/[*#_`|]/g,'').replace(/[\n\r]/g,' ').replace(/\s+/g,' ').substring(0, 600);
+  if(!clean.trim()) return;
+  
+  const utterance = new SpeechSynthesisUtterance(clean);
+  utterance.lang = 'es-MX';
+  utterance.rate = 0.92;   // Más pausado = más natural
+  utterance.pitch = 1.1;   // Tono ligeramente más alto = más femenino
+  utterance.volume = 1.0;
+
+  // Buscar la mejor voz femenina en español
+  function setBestVoice() {
+    const voices = synth.getVoices();
+    // Prioridad: voces premium femeninas
+    const priorities = [
+      v => v.name.includes('Paulina'),           // macOS/iOS español México
+      v => v.name.includes('Monica'),            // macOS español España
+      v => v.name.includes('Mónica'),
+      v => v.name.includes('Luciana'),           // iOS español
+      v => v.name.includes('Valeria'),
+      v => v.name.includes('Laura'),
+      v => v.name.includes('Maria') || v.name.includes('María'),
+      v => v.name.includes('Google') && v.lang === 'es-MX',
+      v => v.name.includes('Google') && v.lang.startsWith('es'),
+      v => v.lang === 'es-MX' && !v.name.toLowerCase().includes('male'),
+      v => v.lang.startsWith('es-') && !v.name.toLowerCase().includes('male'),
+      v => v.lang.startsWith('es'),
+    ];
+    for (const test of priorities) {
+      const found = voices.find(test);
+      if (found) { utterance.voice = found; break; }
+    }
+  }
+
+  if (synth.getVoices().length > 0) {
+    setBestVoice();
+  } else {
+    synth.addEventListener('voiceschanged', setBestVoice, { once: true });
+  }
+  
+  synth.speak(utterance);
+}
+
+</script>
+</body>
+</html>
