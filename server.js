@@ -426,55 +426,84 @@ app.post('/api/chat', async (req, res) => {
 
     if (keys.length > 0) {
       const lastMsg = messages[messages.length - 1]?.content?.toLowerCase() || '';
-      const relevantData = [];
-
+      
+      // ===== BÚSQUEDA SEMÁNTICA INTELIGENTE =====
+      // Extraer palabras clave de la pregunta (ignorar palabras comunes)
+      const stopWords = new Set(['que','como','cual','cuales','dame','dime','muestra','genera','hacer','haz','para','por','con','sin','los','las','del','una','uno','este','esta','estos','estas','hay','tiene','tienen','puede','pueden','quiero','necesito','favor','por','reporte','tabla','excel','pdf','info','informacion','datos','todo','todos','toda','todas']);
+      const keywords = lastMsg.split(/[\s,;:.!?]+/)
+        .map(w => w.replace(/[^a-záéíóúüñ0-9]/gi, '').toLowerCase())
+        .filter(w => w.length > 2 && !stopWords.has(w));
+      
+      // Para cada hoja, buscar filas que coincidan con las palabras clave
+      const sheetResults = [];
+      
       keys.forEach(key => {
         const c = cache[key];
-        // Relevancia ampliada — incluir todas las hojas si la pregunta es general
-        const isGeneral = lastMsg.includes('todo') || lastMsg.includes('resumen') || 
-          lastMsg.includes('reporte') || lastMsg.includes('excel') || lastMsg.includes('tabla') ||
-          lastMsg.includes('dame') || lastMsg.includes('muestra') || lastMsg.includes('lista') ||
-          lastMsg.includes('cuanto') || lastMsg.includes('cuál') || lastMsg.includes('cual') ||
-          lastMsg.includes('top') || lastMsg.includes('mejor') || lastMsg.includes('mayor');
-        const isRelevant = isGeneral || true; // Incluir todas las hojas disponibles siempre
-
-        if (isRelevant) {
-          let sample;
-          if (Array.isArray(c.data) && c.data.length > 0) {
-            // Buscar filas que contengan palabras clave del mensaje
-            const words = lastMsg.split(/\s+/).filter(w => w.length > 3);
-            const matching = c.data.filter(row => {
-              const rowStr = JSON.stringify(row).toLowerCase();
-              return words.some(w => rowStr.includes(w));
-            });
-            if (matching.length > 0) {
-              // Si encontró coincidencias, usar esas + primeras 10
-              sample = [...new Set([...matching.slice(0, 50), ...c.data.slice(0, 10)])].slice(0, 60);
-            } else {
-              sample = c.data.slice(0, 30);
-            }
-          } else {
-            sample = c.data;
-          }
-          const text = `\n### ${c.filename} — Hoja: ${c.sheet} (${Array.isArray(c.data) ? c.data.length : '?'} registros totales)\n${JSON.stringify(sample, null, 1)}`;
-          relevantData.push(text);
+        if (!Array.isArray(c.data) || c.data.length === 0) return;
+        
+        // Buscar coincidencias en los datos
+        let matchingRows = [];
+        let headerRows = c.data.slice(0, 2); // Siempre incluir primeras 2 filas (encabezados)
+        
+        if (keywords.length > 0) {
+          matchingRows = c.data.filter((row, idx) => {
+            if (idx < 2) return false; // Skip headers
+            const rowStr = JSON.stringify(row).toLowerCase()
+              .normalize('NFD').replace(/[\u0300-\u036f]/g, ''); // Normalize accents
+            const msgNorm = lastMsg.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            const kwNorm = keywords.map(k => k.normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
+            return kwNorm.some(kw => rowStr.includes(kw));
+          });
         }
+        
+        // Combinar: encabezados + coincidencias + muestra general
+        const generalSample = c.data.slice(0, 5);
+        const combined = [...headerRows, ...matchingRows.slice(0, 80), ...generalSample]
+          .filter((v, i, arr) => arr.findIndex(x => JSON.stringify(x) === JSON.stringify(v)) === i)
+          .slice(0, 100);
+        
+        const hasMatches = matchingRows.length > 0;
+        const score = hasMatches ? matchingRows.length : 0;
+        
+        sheetResults.push({
+          key, score, hasMatches,
+          text: `\n### ${c.filename} — ${c.sheet} (${c.data.length} registros totales, ${matchingRows.length} coincidencias)\n${JSON.stringify(combined, null, 1)}`,
+          textLength: 0
+        });
       });
-
-      // Limitar contexto total estimando tokens (~4 chars per token, max 150k tokens para datos)
-      const MAX_CHARS = 600000; // ~150k tokens
+      
+      // Ordenar: primero las hojas con más coincidencias
+      sheetResults.sort((a, b) => b.score - a.score);
+      
+      // Calcular longitud y limitar a 100k chars total (~25k tokens)
+      const MAX_CHARS = 100000;
       let totalChars = 0;
-      const limitedData = [];
-      for(const d of relevantData){
-        if(totalChars + d.length > MAX_CHARS) break;
-        limitedData.push(d);
-        totalChars += d.length;
+      const selectedSheets = [];
+      
+      for (const sheet of sheetResults) {
+        if (totalChars + sheet.text.length > MAX_CHARS) {
+          // Si no cabe completo, intentar versión reducida
+          if (selectedSheets.length === 0 && sheet.hasMatches) {
+            // Al menos incluir las coincidencias de la hoja más relevante
+            const shortText = sheet.text.substring(0, MAX_CHARS - totalChars - 100);
+            if (shortText.length > 200) selectedSheets.push(shortText + '\n...(datos truncados)');
+          }
+          break;
+        }
+        selectedSheets.push(sheet.text);
+        totalChars += sheet.text.length;
       }
-
-      if (limitedData.length > 0) {
-        qadContext = `\n\nDATOS QAD DISPONIBLES (${new Date(qadLastUpdate || Date.now()).toLocaleString('es-MX')}) — ${keys.length} hojas cargadas:\n${limitedData.join('\n')}`;
+      
+      // Índice de todas las hojas disponibles
+      const sheetIndex = keys.map(k => {
+        const c = cache[k];
+        return \`- \${c.filename} / \${c.sheet}: \${Array.isArray(c.data) ? c.data.length : '?'} registros\`;
+      }).join('\n');
+      
+      if (selectedSheets.length > 0) {
+        qadContext = \`\n\nDATOS QAD (\${new Date().toLocaleString('es-MX')}):\nHojas disponibles:\n\${sheetIndex}\n\nDatos relevantes para tu consulta:\n\${selectedSheets.join('\n')}\`;
       } else {
-        qadContext = `\n\nDatos disponibles en QAD:\n${keys.map(k => `- ${cache[k].filename} / ${cache[k].sheet}: ${Array.isArray(cache[k].data) ? cache[k].data.length : '?'} registros`).join('\n')}`;
+        qadContext = \`\n\nDatos disponibles en QAD (\${keys.length} hojas):\n\${sheetIndex}\n\nNota: Los datos son muy grandes. Haz una pregunta más específica para ver los registros.\`;
       }
     }
 
