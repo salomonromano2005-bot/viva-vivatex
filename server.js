@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
 const xlsx = require('xlsx');
+const pdfParse = require('pdf-parse');
 const { Pool } = require('pg');
 
 const app = express();
@@ -254,12 +255,15 @@ app.post('/api/qad/upload', upload.array('files', 20), async (req, res) => {
     const parsed = parseFile(file.buffer, file.originalname);
     if (parsed) {
       const baseName = path.basename(file.originalname, path.extname(file.originalname));
+      // Incluir timestamp en la key para preservar historial — nunca sobreescribir datos anteriores
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
       for (const sheet of Object.keys(parsed)) {
-        const key = `${baseName}_${sheet}`.replace(/\s+/g, '_').toLowerCase();
+        const key = `${baseName}_${sheet}_${timestamp}`.replace(/\s+/g, '_').toLowerCase();
         const entry = {
           data: parsed[sheet],
           filename: file.originalname,
           sheet,
+          uploadDate: timestamp,
           updatedAt: new Date().toISOString()
         };
         qadDataCache[key] = entry;
@@ -278,21 +282,38 @@ app.post('/api/qad/upload', upload.array('files', 20), async (req, res) => {
 app.post('/api/qad/upload-pdf', upload.single('pdf'), async (req, res) => {
   if(!req.file) return res.status(400).json({ error: 'No se recibio archivo PDF' });
   try {
-    const key = 'pdf_' + req.file.originalname + '_' + Date.now();
-    const entry = {
+    // Extraer texto del PDF
+    let pdfText = '';
+    let pdfData = [];
+    try {
+      const parsed = await pdfParse(req.file.buffer);
+      pdfText = parsed.text || '';
+      // Convertir texto a filas para búsqueda semántica
+      const lines = pdfText.split('\n').filter(l => l.trim().length > 2);
+      pdfData = lines.map(line => ({ texto: line.trim() }));
+      console.log(`PDF procesado: ${req.file.originalname} — ${lines.length} líneas extraídas`);
+    } catch(pdfErr) {
+      console.warn('Error leyendo PDF:', pdfErr.message);
+      pdfData = [{ texto: '[PDF no legible: ' + req.file.originalname + ']' }];
+    }
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
+    const key = 'pdf_' + req.file.originalname.replace(/[^a-z0-9]/gi, '_') + '_' + timestamp;
+    
+    qadDataCache[key] = {
       filename: req.file.originalname,
       sheet: 'PDF',
-      data: '[Archivo PDF: ' + req.file.originalname + ' - ' + Math.round(req.file.size/1024) + 'KB]',
+      data: pdfData,
       updatedAt: new Date().toISOString()
     };
-    qadDataCache[key] = entry;
+    
     if(pool){
       await pool.query(
         'INSERT INTO qad_data (sheet_key, filename, sheet_name, data, updated_at) VALUES ($1,$2,$3,$4,NOW()) ON CONFLICT (sheet_key) DO UPDATE SET data=$4, updated_at=NOW()',
-        [key, entry.filename, 'PDF', JSON.stringify(entry.data)]
+        [key, req.file.originalname, 'PDF', JSON.stringify(pdfData)]
       );
     }
-    res.json({ ok: true, message: 'PDF recibido: ' + req.file.originalname });
+    res.json({ ok: true, message: 'PDF procesado: ' + req.file.originalname + ' (' + pdfData.length + ' líneas extraídas)' });
   } catch(e){
     console.error('Error PDF:', e);
     res.status(500).json({ error: e.message });
