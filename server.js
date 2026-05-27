@@ -90,7 +90,7 @@ async function tableExists(name) {
 
 // ─── BÚSQUEDA INTELIGENTE EN POSTGRESQL ───────────────────────────
 // Busca directamente en JSONB usando PostgreSQL — mucho más eficiente
-async function searchQADPostgres(userMessage, maxRows = 200) {
+async function searchQADPostgres(userMessage, maxRows = 500) {
   if (!pool) return { rows: [], total: 0, sources: [] };
 
   const msg = norm(userMessage);
@@ -127,48 +127,53 @@ async function searchQADPostgres(userMessage, maxRows = 200) {
       return { rows: allRows.slice(0, maxRows), total: totalRows, sources };
     }
 
-    // Buscar con keywords en JSONB — búsqueda de texto completo
+        // Buscar en TODAS las hojas con keywords
     let allMatches = [];
-    
+
     for (const src of sources) {
-      // Construir query de búsqueda JSONB
-      const searchConditions = keywords.map((_, i) => 
-        `lower(data_row::text) LIKE $${i + 2}`
-      ).join(' OR ');
-      
-      const query = `
-        SELECT data_row as row
-        FROM qad_data,
-        jsonb_array_elements(data) AS data_row
-        WHERE sheet_key = $1
-        AND (${searchConditions})
-        LIMIT $${keywords.length + 2}
-      `;
-      
-      const params = [src.key, ...keywords.map(k => `%${k}%`), Math.ceil(maxRows / sources.length) + 20];
-      
       try {
+        let query, params;
+
+        if (keywords.length > 0) {
+          // Buscar filas que contengan cualquiera de las keywords
+          const conditions = keywords.map((_, i) => `lower(elem::text) LIKE $${i + 2}`).join(' OR ');
+          query = `
+            SELECT elem as row
+            FROM qad_data, jsonb_array_elements(data) AS elem
+            WHERE sheet_key = $1 AND (${conditions})
+            LIMIT 500
+          `;
+          params = [src.key, ...keywords.map(k => `%${k}%`)];
+        } else {
+          // Sin keywords — traer todos los registros
+          query = `SELECT jsonb_array_elements(data) as row FROM qad_data WHERE sheet_key = $1 LIMIT 500`;
+          params = [src.key];
+        }
+
         const r = await pool.query(query, params);
         r.rows.forEach(row => {
           allMatches.push({ ...row.row, _source: src.filename + '/' + src.sheet });
         });
       } catch(e) {
-        // Si falla la búsqueda JSONB, traer muestra
-        const fallback = await pool.query(
-          `SELECT jsonb_array_elements(data) as row FROM qad_data WHERE sheet_key = $1 LIMIT 30`,
-          [src.key]
-        );
-        fallback.rows.forEach(row => {
-          allMatches.push({ ...row.row, _source: src.filename + '/' + src.sheet });
-        });
+        console.error('Error búsqueda hoja:', src.key, e.message);
+        // Fallback — traer todos sin filtro
+        try {
+          const fallback = await pool.query(
+            `SELECT jsonb_array_elements(data) as row FROM qad_data WHERE sheet_key = $1 LIMIT 200`,
+            [src.key]
+          );
+          fallback.rows.forEach(row => {
+            allMatches.push({ ...row.row, _source: src.filename + '/' + src.sheet });
+          });
+        } catch(e2) {}
       }
     }
 
-    // Si no encontró nada con keywords, traer muestra general
+    // Si aun no hay nada — traer todo sin filtro
     if (allMatches.length === 0) {
-      for (const src of sources.slice(0, 3)) {
+      for (const src of sources) {
         const r = await pool.query(
-          `SELECT jsonb_array_elements(data) as row FROM qad_data WHERE sheet_key = $1 LIMIT 60`,
+          `SELECT jsonb_array_elements(data) as row FROM qad_data WHERE sheet_key = $1 LIMIT 200`,
           [src.key]
         );
         r.rows.forEach(row => allMatches.push({ ...row.row, _source: src.filename + '/' + src.sheet }));
@@ -195,7 +200,7 @@ async function buildQADContext(userMessage = '') {
       return { hasData: false, text: 'No hay datos QAD cargados. El administrador debe subir archivos Excel/CSV desde el Panel de Sistemas.' };
     }
 
-    const { rows, total, sources } = await searchQADPostgres(userMessage, 200);
+    const { rows, total, sources } = await searchQADPostgres(userMessage, 500);
 
     if (!rows.length) return { hasData: false, text: 'No encontré datos relacionados con tu consulta en QAD.' };
 
