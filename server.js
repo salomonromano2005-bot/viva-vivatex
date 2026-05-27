@@ -25,7 +25,7 @@ const PORT = process.env.PORT || 3000;
 const DATABASE_URL = process.env.DATABASE_URL || '';
 const AI_PROVIDER = process.env.AI_PROVIDER || 'openai';
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
-const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4.1';
+const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
 
 let pool = null;
 let qadDataCache = {};
@@ -799,9 +799,9 @@ Responde con una tabla que incluya archivo, hoja, número de registros y posible
     let rowsToInclude = [];
 
     if (keywords.length > 0) {
-      rowsToInclude = matchedRows.slice(0, 180).map(r => r.row);
+      rowsToInclude = matchedRows.slice(0, 80).map(r => r.row);
     } else if (catMatch) {
-      rowsToInclude = rows.slice(0, 180);
+      rowsToInclude = rows.slice(0, 80);
     }
 
     if (rowsToInclude.length > 0) {
@@ -823,15 +823,15 @@ ${rowsToTable(rowsToInclude)}
 
   results.sort((a, b) => b.score - a.score);
 
-  const MAX_CHARS = 90000;
+  const MAX_CHARS = 45000;
   let totalChars = 0;
   const selected = [];
   let selectedCount = 0;
 
   for (const r of results) {
-    if (selectedCount >= 8) break;
+    if (selectedCount >= 6) break;
 
-    const trimmedText = r.text.substring(0, 12000);
+    const trimmedText = r.text.substring(0, 8000);
 
     if (totalChars + trimmedText.length > MAX_CHARS) break;
 
@@ -849,7 +849,7 @@ ${rowsToTable(rowsToInclude)}
 ### HOJA: ${c.sheet}
 ### TOTAL REGISTROS: ${c.data.length}
 
-${rowsToTable((c.data || []).slice(0, 30))}
+${rowsToTable((c.data || []).slice(0, 15))}
 `;
     }).join('\n');
 
