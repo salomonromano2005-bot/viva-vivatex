@@ -238,11 +238,7 @@ async function loadQADFromDB() {
       let data = row.data;
 
       if (typeof data === 'string') {
-        try {
-          data = JSON.parse(data);
-        } catch {
-          data = [];
-        }
+        try { data = JSON.parse(data); } catch { data = []; }
       }
 
       if (!Array.isArray(data)) data = data ? [data] : [];
@@ -264,7 +260,6 @@ async function loadQADFromDB() {
 
 async function clearQADFromDB() {
   if (!pool) return;
-
   try {
     await pool.query('DELETE FROM qad_data');
   } catch (e) {
@@ -292,9 +287,7 @@ const uploadPDF = multer({
   limits: { fileSize: 50 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
-
     if (ext !== '.pdf') return cb(new Error('Solo se aceptan archivos PDF'));
-
     cb(null, true);
   },
 });
@@ -383,7 +376,6 @@ app.post('/api/qad/upload-pdf', uploadPDF.single('pdf'), async (req, res) => {
         .filter(l => l.length > 2);
 
       pdfData = lines.map(line => ({ texto: line }));
-
       console.log(`📄 PDF procesado: ${req.file.originalname} — ${lines.length} líneas`);
     } catch (pdfErr) {
       console.warn('Error leyendo PDF:', pdfErr.message);
@@ -645,7 +637,19 @@ function normalizeText(text) {
     .trim();
 }
 
-function rowsToTable(rows) {
+function formatValue(value) {
+  if (value === null || value === undefined || value === '') return 'NO DISPONIBLE EN QAD';
+
+  if (typeof value === 'number') {
+    return Number.isInteger(value)
+      ? value.toLocaleString('es-MX')
+      : value.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  return String(value).replace(/\n/g, ' ').replace(/\|/g, '/').trim();
+}
+
+function rowsToTable(rows, maxRows = 80) {
   if (!rows || rows.length === 0) return '(sin datos)';
 
   const firstRow = rows.find(r => r && typeof r === 'object');
@@ -654,20 +658,13 @@ function rowsToTable(rows) {
   const cols = Object.keys(firstRow);
   if (cols.length === 0) return '(sin datos)';
 
+  const limited = rows.slice(0, maxRows);
+
   const header = `| ${cols.join(' | ')} |`;
   const separator = `| ${cols.map(() => '---').join(' | ')} |`;
 
-  const lines = rows.map(row =>
-    `| ${cols.map(col => {
-      const v = row[col];
-
-      if (v === null || v === undefined || v === '') return '-';
-
-      return String(v)
-        .replace(/\n/g, ' ')
-        .replace(/\|/g, '/')
-        .trim();
-    }).join(' | ')} |`
+  const lines = limited.map(row =>
+    `| ${cols.map(col => formatValue(row[col])).join(' | ')} |`
   );
 
   return [header, separator, ...lines].join('\n');
@@ -680,10 +677,9 @@ function getImportantKeywords(text) {
     'una', 'uno', 'este', 'esta', 'hay', 'tiene', 'pueden', 'quiero',
     'necesito', 'favor', 'reporte', 'tabla', 'excel', 'pdf', 'info',
     'informacion', 'datos', 'todo', 'todos', 'toda', 'todas', 'top',
-    'mayor', 'menor', 'mas', 'menos', 'cliente', 'clientes', 'saldo',
-    'saldos', 'ventas', 'venta', 'archivo', 'archivos', 'qad', 'sobre',
-    'de', 'la', 'el', 'en', 'y', 'o', 'a', 'un', 'al', 'me', 'lo',
-    'explica', 'explicame', 'detalla', 'detalle'
+    'mayor', 'menor', 'mas', 'menos', 'archivo', 'archivos', 'qad',
+    'sobre', 'de', 'la', 'el', 'en', 'y', 'o', 'a', 'un', 'al', 'me',
+    'lo', 'explica', 'explicame', 'detalla', 'detalle'
   ]);
 
   return normalizeText(text)
@@ -753,10 +749,8 @@ function buildQADContext(cache, messages) {
   });
 
   const includeAll = msgCats.size === 0;
-
   const sheetIndex = keys.map(k => {
     const c = cache[k];
-
     return `- ${c.filename} / Hoja: ${c.sheet}: ${Array.isArray(c.data) ? c.data.length : '?'} registros`;
   }).join('\n');
 
@@ -767,7 +761,8 @@ function buildQADContext(cache, messages) {
     if (!c || !Array.isArray(c.data) || c.data.length === 0) continue;
 
     const rows = c.data;
-    const fileNorm = normalizeText(`${c.filename} ${c.sheet} ${key}`);
+    const schema = Object.keys(rows.find(r => r && typeof r === 'object') || {}).join(' ');
+    const fileNorm = normalizeText(`${c.filename} ${c.sheet} ${key} ${schema}`);
 
     const fileCats = new Set();
 
@@ -784,11 +779,11 @@ function buildQADContext(cache, messages) {
       let score = 0;
 
       for (const kw of keywords) {
-        if (rowText.includes(kw)) score += 30;
+        if (rowText.includes(kw)) score += 40;
+        if (fileNorm.includes(kw)) score += 10;
 
         const words = rowText.split(' ');
-
-        if (words.some(w => w.startsWith(kw) || kw.startsWith(w))) score += 10;
+        if (words.some(w => w.startsWith(kw) || kw.startsWith(w))) score += 8;
       }
 
       if (catMatch) score += 5;
@@ -813,11 +808,14 @@ function buildQADContext(cache, messages) {
         text: `
 ### ARCHIVO: ${c.filename}
 ### HOJA: ${c.sheet}
+### COLUMNAS DISPONIBLES EN QAD:
+${Object.keys(rowsToInclude[0] || {}).join(', ')}
+
 ### TOTAL REGISTROS EN ARCHIVO: ${rows.length}
 ### REGISTROS ENVIADOS A AVIVA: ${rowsToInclude.length}
 ### COINCIDENCIAS DIRECTAS: ${matchedRows.length}
 
-${rowsToTable(rowsToInclude)}
+${rowsToTable(rowsToInclude, 80)}
 `
       });
     }
@@ -851,7 +849,7 @@ ${rowsToTable(rowsToInclude)}
 ### HOJA: ${c.sheet}
 ### TOTAL REGISTROS: ${c.data.length}
 
-${rowsToTable((c.data || []).slice(0, 15))}
+${rowsToTable((c.data || []).slice(0, 15), 15)}
 `;
     }).join('\n');
 
@@ -873,17 +871,20 @@ ${samples}
 ARCHIVOS DISPONIBLES:
 ${sheetIndex}
 
-===== DATOS RELEVANTES PARA ESTA CONSULTA =====
+===== DATOS REALES EXTRAÍDOS DE QAD PARA ESTA CONSULTA =====
 
 ${selected.join('\n')}
 
-===== INSTRUCCIONES DE USO DE DATOS =====
+===== REGLAS ESPECIALES SOBRE LOS DATOS =====
 
-- Usa únicamente los datos anteriores.
-- Cuando haya registros, responde con tabla markdown.
-- No respondas en una sola frase.
-- Da resumen ejecutivo, tabla, análisis y observaciones.
-- Mantén nombres, códigos, importes y fechas exactamente como aparecen.
+- La tabla anterior es la fuente de verdad.
+- Usa únicamente campos, nombres, vendedores, clientes, importes, fechas y códigos que aparezcan en la tabla QAD.
+- Si una columna existe en la tabla, úsala exactamente.
+- Si un dato no aparece en QAD, escribe "NO DISPONIBLE EN QAD".
+- No inventes vendedores.
+- No inventes clientes.
+- No inventes importes.
+- No inventes conclusiones fuera de los datos.
 `;
 }
 
@@ -935,61 +936,57 @@ function buildPermissionContext(username) {
 function buildExecutivePrompt() {
   return `
 ==============================
-MODO DE RESPUESTA AVIVA PREMIUM
+MODO AVIVA ESTRICTO SIN INVENCIÓN
 ==============================
 
-Eres AVIVA, la inteligencia empresarial de Grupo Vivatex.
+Eres AVIVA, inteligencia empresarial de Grupo Vivatex.
 
-Tu estilo debe parecerse a un analista corporativo senior:
-- claro
-- profesional
-- detallado
-- ordenado
-- concreto
-- visualmente limpio
+REGLA MÁS IMPORTANTE:
+NO INVENTES ABSOLUTAMENTE NADA.
 
-REGLAS OBLIGATORIAS:
+Tu única fuente de verdad son los datos QAD incluidos en el contexto.
 
-1. Si hay datos QAD, NO respondas genérico.
-2. Si hay datos QAD, SIEMPRE usa tablas markdown.
-3. Para cualquier consulta de clientes, saldos, cartera, ventas, pedidos, inventario o producción, responde con esta estructura:
+PROHIBIDO:
+- Inventar vendedores.
+- Inventar clientes.
+- Inventar saldos.
+- Inventar nombres.
+- Inventar códigos.
+- Inventar fechas.
+- Decir que un campo no existe si aparece como columna en la tabla QAD.
+- Dar conclusiones que no salgan de los datos.
+
+OBLIGATORIO:
+- Responder en español.
+- Responder con formato profesional.
+- Responder con tablas markdown siempre que haya datos.
+- Mostrar la información de forma organizada y fácil de leer.
+- Si preguntas por clientes, vendedores, saldos, cartera, pedidos, inventario o ventas, usa tabla.
+- Mantén nombres, códigos, vendedores, importes y fechas exactamente como aparecen en QAD.
+- Si un campo aparece vacío, escribe "NO DISPONIBLE EN QAD".
+
+FORMATO OBLIGATORIO CUANDO HAYA DATOS:
 
 ## Resumen ejecutivo
-Explica qué encontraste.
+Explica qué se encontró, sin inventar.
 
-## Tabla de datos encontrados
-Incluye tabla markdown con columnas importantes.
+## Tabla principal
+Incluye una tabla markdown con los datos QAD relevantes.
 
-## Análisis
-Explica puntos relevantes, riesgos, saldos, fechas, atrasos, cantidades o patrones.
+## Análisis basado únicamente en QAD
+Explica patrones, saldos, importes, fechas o vendedores solo si aparecen en QAD.
 
 ## Observaciones
-Aclara si faltan campos, si hay varias coincidencias o si los datos parecen incompletos.
+Aclara campos vacíos, coincidencias múltiples o limitaciones.
 
 ## Siguiente acción sugerida
-Sugiere qué revisar, exportar o confirmar.
+Sugiere revisar, exportar o filtrar información.
 
-4. Si el usuario pregunta por un cliente específico:
-- Busca nombre, código, razón social o coincidencias parciales.
-- Muestra todos los registros encontrados.
-- No ocultes nombres.
-- No inventes campos.
-- Si un campo no aparece, escribe "No disponible".
-
-5. Si hay muchos registros:
-- Muestra los más relevantes.
-- Ordena por saldo, fecha, importe, cliente, pedido o relevancia.
-- Di cuántos registros se revisaron y cuántos se muestran.
-
-6. Las tablas deben escribirse en markdown correcto:
+TABLAS:
+Las tablas deben estar en markdown correcto:
 | Columna | Columna |
 |---|---|
 | Dato | Dato |
-
-7. Nunca respondas solo "no tengo información" si hay archivos QAD disponibles.
-8. No seas demasiado breve.
-9. No inventes números.
-10. Mantén exactamente nombres, códigos, fechas e importes como aparecen.
 `;
 }
 
@@ -1065,7 +1062,7 @@ ${permContext}
       body: JSON.stringify({
         model: OPENAI_MODEL,
         messages: openaiMessages,
-        temperature: 0.05,
+        temperature: 0,
         max_tokens: 4096,
         presence_penalty: 0,
         frequency_penalty: 0,
