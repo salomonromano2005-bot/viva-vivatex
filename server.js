@@ -617,6 +617,16 @@ app.post('/api/excel/generate', async (req, res) => {
   }
 });
 
+function normalizeText(text) {
+  return String(text || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function rowsToTable(rows) {
   if (!rows || rows.length === 0) return '(sin datos)';
 
@@ -626,28 +636,18 @@ function rowsToTable(rows) {
   const cols = Object.keys(firstRow);
   if (cols.length === 0) return '(sin datos)';
 
-  const header = cols.join(' | ');
-  const separator = cols.map(() => '---').join(' | ');
+  const header = `| ${cols.join(' | ')} |`;
+  const separator = `| ${cols.map(() => '---').join(' | ')} |`;
 
   const lines = rows.map(row =>
-    cols.map(col => {
+    `| ${cols.map(col => {
       const v = row[col];
       if (v === null || v === undefined || v === '') return '-';
       return String(v).replace(/\n/g, ' ').replace(/\|/g, '/').trim();
-    }).join(' | ')
+    }).join(' | ')} |`
   );
 
   return [header, separator, ...lines].join('\n');
-}
-
-function normalizeText(text) {
-  return String(text || '')
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
 }
 
 function getImportantKeywords(text) {
@@ -659,7 +659,8 @@ function getImportantKeywords(text) {
     'informacion', 'datos', 'todo', 'todos', 'toda', 'todas', 'top',
     'mayor', 'menor', 'mas', 'menos', 'cliente', 'clientes', 'saldo',
     'saldos', 'ventas', 'venta', 'archivo', 'archivos', 'qad', 'sobre',
-    'de', 'la', 'el', 'en', 'y', 'o', 'a', 'un', 'al', 'me', 'lo'
+    'de', 'la', 'el', 'en', 'y', 'o', 'a', 'un', 'al', 'me', 'lo',
+    'explica', 'explicame', 'detalla', 'detalle'
   ]);
 
   return normalizeText(text)
@@ -693,12 +694,30 @@ function buildQADContext(cache, messages) {
     if (words.some(w => lastMsgNorm.includes(w))) msgCats.add(cat);
   });
 
-  const includeAll = msgCats.size === 0 || lastMsgNorm.includes('que archivos') || lastMsgNorm.includes('que tienes');
+  const wantsFiles =
+    lastMsgNorm.includes('que archivos') ||
+    lastMsgNorm.includes('que datos') ||
+    lastMsgNorm.includes('que tienes cargado') ||
+    lastMsgNorm.includes('archivos cargados');
+
+  const includeAll = msgCats.size === 0 || wantsFiles;
 
   const sheetIndex = keys.map(k => {
     const c = cache[k];
     return `- ${c.filename} / Hoja: ${c.sheet}: ${Array.isArray(c.data) ? c.data.length : '?'} registros`;
   }).join('\n');
+
+  if (wantsFiles) {
+    return `
+===== DATOS QAD DISPONIBLES =====
+
+ARCHIVOS DISPONIBLES:
+${sheetIndex}
+
+INSTRUCCIÓN:
+Responde con una tabla que incluya archivo, hoja, número de registros y posible uso del archivo.
+`;
+  }
 
   const results = [];
 
@@ -723,16 +742,15 @@ function buildQADContext(cache, messages) {
       let score = 0;
 
       for (const kw of keywords) {
-        if (rowText.includes(kw)) score += 20;
+        if (rowText.includes(kw)) score += 30;
 
         const words = rowText.split(' ');
-        if (words.some(w => w.startsWith(kw) || kw.startsWith(w))) score += 7;
+        if (words.some(w => w.startsWith(kw) || kw.startsWith(w))) score += 10;
       }
 
-      if (catMatch && keywords.length === 0) score += 3;
-      if (catMatch && keywords.length > 0) score += 2;
+      if (catMatch) score += 5;
 
-      if (score > 0 || (catMatch && includeAll)) {
+      if (score > 0) {
         matchedRows.push({ row, score });
       }
     }
@@ -742,9 +760,9 @@ function buildQADContext(cache, messages) {
     let rowsToInclude = [];
 
     if (keywords.length > 0) {
-      rowsToInclude = matchedRows.slice(0, 200).map(r => r.row);
+      rowsToInclude = matchedRows.slice(0, 300).map(r => r.row);
     } else if (catMatch) {
-      rowsToInclude = rows.slice(0, 200);
+      rowsToInclude = rows.slice(0, 300);
     }
 
     if (rowsToInclude.length > 0) {
@@ -754,8 +772,9 @@ function buildQADContext(cache, messages) {
         text: `
 ### ARCHIVO: ${c.filename}
 ### HOJA: ${c.sheet}
-### TOTAL REGISTROS: ${rows.length}
-### REGISTROS ENVIADOS: ${rowsToInclude.length}
+### TOTAL REGISTROS EN ARCHIVO: ${rows.length}
+### REGISTROS ENVIADOS A AVIVA: ${rowsToInclude.length}
+### COINCIDENCIAS DIRECTAS: ${matchedRows.length}
 
 ${rowsToTable(rowsToInclude)}
 `
@@ -765,7 +784,7 @@ ${rowsToTable(rowsToInclude)}
 
   results.sort((a, b) => b.score - a.score);
 
-  const MAX_CHARS = 140000;
+  const MAX_CHARS = 170000;
   let totalChars = 0;
   const selected = [];
 
@@ -789,7 +808,7 @@ ${rowsToTable(rowsToInclude)}
 ### HOJA: ${c.sheet}
 ### TOTAL REGISTROS: ${c.data.length}
 
-${rowsToTable((c.data || []).slice(0, 30))}
+${rowsToTable((c.data || []).slice(0, 40))}
 `;
     }).join('\n');
 
@@ -799,7 +818,7 @@ ${rowsToTable((c.data || []).slice(0, 30))}
 ARCHIVOS DISPONIBLES:
 ${sheetIndex}
 
-No hubo coincidencias exactas con la pregunta, pero estos son ejemplos de los datos disponibles:
+No hubo coincidencias exactas con la pregunta. Aquí hay una muestra de datos disponibles:
 
 ${samples}
 `;
@@ -817,12 +836,11 @@ ${selected.join('\n')}
 
 ===== INSTRUCCIONES DE USO DE DATOS =====
 
-- Usa ÚNICAMENTE los datos anteriores.
-- Si el usuario pregunta por un cliente, busca coincidencias por nombre, código, razón social o cualquier campo parecido.
-- Si hay datos, NO digas que no tienes datos.
-- Responde con tablas cuando haya más de un registro.
-- Mantén nombres, códigos, fechas e importes exactamente como aparecen.
-- Si hay muchos registros, organiza por ranking, saldo, fecha, cliente, vendedor o categoría.
+- Usa únicamente los datos anteriores.
+- Cuando haya registros, responde con tabla markdown.
+- No respondas en una sola frase.
+- Da resumen ejecutivo, tabla, análisis y observaciones.
+- Mantén nombres, códigos, importes y fechas exactamente como aparecen.
 `;
 }
 
@@ -847,28 +865,89 @@ function buildPermissionContext(username) {
   };
 
   if (NO_CONTABLE_USERS.includes(cleanUsername)) {
-    return `\n\nRESTRICCIONES DE ACCESO — OBLIGATORIO CUMPLIR:
-- NUNCA muestres información contable: activos, pasivos, balance general, estado de resultados, cuentas contables, debe, haber, patrimonio.
-- Si preguntan sobre esos temas responde: "No tienes acceso a información contable. Consulta con el área de sistemas."
-- SÍ puedes mostrar facturación, ventas, producción, inventario, clientes, proveedores, pedidos, cobranza y datos operativos.`;
+    return `\n\nRESTRICCIONES DE ACCESO:
+- No mostrar información contable: activos, pasivos, balance general, estado de resultados, cuentas contables, debe, haber, patrimonio.
+- Si preguntan esos temas responde: "No tienes acceso a información contable. Consulta con el área de sistemas."
+- Sí puedes mostrar facturación, ventas, producción, inventario, clientes, proveedores, pedidos, cobranza y datos operativos.`;
   }
 
   if (VENDEDOR_USERS[cleanUsername]) {
     const vend = VENDEDOR_USERS[cleanUsername];
 
-    return `\n\nRESTRICCIONES DE ACCESO — OBLIGATORIO CUMPLIR:
-- SOLO puedes mostrar información del vendedor: ${vend}.
-- Filtra SIEMPRE los datos para mostrar únicamente ventas, pedidos, atrasos, clientes y bodega/almacén relacionados con ${vend}.
+    return `\n\nRESTRICCIONES DE ACCESO:
+- Solo puedes mostrar información del vendedor: ${vend}.
+- Filtra siempre los datos para mostrar únicamente ventas, pedidos, atrasos, clientes y bodega/almacén relacionados con ${vend}.
 - Si preguntan sobre otros vendedores responde: "Solo tienes acceso a tu información de ventas."
-- NUNCA muestres datos de otros vendedores.`;
+- Nunca muestres datos de otros vendedores.`;
   }
 
   if (cleanUsername === 'ISMAEL_VENTAS') {
-    return `\n\nACCESOS HABILITADOS PARA ESTE USUARIO:
-- Puede ver ventas de TODOS los vendedores, producción, pedidos con y sin cliente, almacén de tela acabada y bodega.`;
+    return `\n\nACCESOS HABILITADOS:
+- Puede ver ventas de todos los vendedores, producción, pedidos con y sin cliente, almacén de tela acabada y bodega.`;
   }
 
   return '';
+}
+
+function buildExecutivePrompt() {
+  return `
+==============================
+MODO DE RESPUESTA AVIVA PREMIUM
+==============================
+
+Eres AVIVA, la inteligencia empresarial de Grupo Vivatex.
+
+Tu estilo debe parecerse a un analista corporativo senior:
+- claro
+- profesional
+- detallado
+- ordenado
+- concreto
+- visualmente limpio
+
+REGLAS OBLIGATORIAS:
+
+1. Si hay datos QAD, NO respondas genérico.
+2. Si hay datos QAD, SIEMPRE usa tablas markdown.
+3. Para cualquier consulta de clientes, saldos, cartera, ventas, pedidos, inventario o producción, responde con esta estructura:
+
+## Resumen ejecutivo
+Explica en 3 a 6 líneas qué encontraste.
+
+## Tabla de datos encontrados
+Incluye una tabla markdown con las columnas disponibles más importantes.
+
+## Análisis
+Explica los puntos relevantes, riesgos, saldos, fechas, atrasos, cantidades o patrones.
+
+## Observaciones
+Aclara si faltan campos, si hay varias coincidencias o si los datos parecen incompletos.
+
+## Siguiente acción sugerida
+Sugiere qué revisar, exportar o confirmar.
+
+4. Si el usuario pregunta por un cliente específico:
+- Busca nombre, código, razón social o coincidencias parciales.
+- Muestra todos los registros encontrados.
+- No ocultes nombres.
+- No inventes campos.
+- Si un campo no aparece, escribe "No disponible".
+
+5. Si hay muchos registros:
+- Muestra los más relevantes.
+- Ordena por saldo, fecha, importe, cliente, pedido o relevancia.
+- Di cuántos registros se revisaron y cuántos se muestran.
+
+6. Las tablas deben escribirse en markdown correcto:
+| Columna | Columna |
+|---|---|
+| Dato | Dato |
+
+7. Nunca respondas solo "no tengo información" si hay archivos QAD disponibles.
+8. No seas demasiado breve. AVIVA debe dar respuestas útiles y completas.
+9. No inventes números.
+10. Mantén exactamente nombres, códigos, fechas e importes como aparecen.
+`;
 }
 
 app.post('/api/chat', async (req, res) => {
@@ -893,6 +972,7 @@ app.post('/api/chat', async (req, res) => {
     const cache = pool ? await loadQADFromDB() : qadDataCache;
     const qadContext = buildQADContext(cache, messages);
     const permContext = buildPermissionContext(username);
+    const executivePrompt = buildExecutivePrompt();
 
     const dataSize = qadContext.length;
     const sheetsIncluded = (qadContext.match(/### ARCHIVO:/g) || []).length;
@@ -902,26 +982,11 @@ app.post('/api/chat', async (req, res) => {
     const fullSystem = `
 ${String(system)}
 
+${executivePrompt}
+
 ${qadContext}
 
 ${permContext}
-
-==============================
-REGLAS OBLIGATORIAS DE AVIVA
-==============================
-
-1. Eres AVIVA, asistente empresarial de Grupo Vivatex.
-2. Responde siempre en español.
-3. Responde con estilo corporativo, limpio, concreto y profesional.
-4. Si hay datos QAD disponibles, usa esos datos y no respondas genérico.
-5. Si el usuario pregunta por clientes, cartera, saldos, ventas, pedidos, inventario o producción, responde con tabla.
-6. Si pregunta por un cliente específico, entrega todos los datos encontrados de ese cliente en una tabla ordenada.
-7. Mantén nombres, códigos, fechas e importes exactamente como aparecen en los datos.
-8. No inventes datos.
-9. Si no encuentras coincidencia exacta, di qué archivos sí tienes y qué campos puedes revisar.
-10. Si el usuario pide Excel, prepara la respuesta para que el frontend pueda generar el Excel.
-11. Si hay muchos datos, primero da resumen ejecutivo y luego tabla.
-12. No digas "no tengo datos" si en el contexto hay archivos QAD disponibles.
 `;
 
     const openaiMessages = [
@@ -941,8 +1006,8 @@ REGLAS OBLIGATORIAS DE AVIVA
       body: JSON.stringify({
         model: OPENAI_MODEL,
         messages: openaiMessages,
-        temperature: 0.15,
-        max_tokens: 4096,
+        temperature: 0.05,
+        max_tokens: 8000,
       }),
     });
 
