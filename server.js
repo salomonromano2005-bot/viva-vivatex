@@ -146,10 +146,15 @@ app.post('/api/login', async (req, res) => {
       [String(username).trim().toUpperCase(), password]
     );
 
-    if (result.rows.length === 0) return res.json({ ok: false, error: 'Usuario o contraseña incorrectos' });
+    if (result.rows.length === 0) {
+      return res.json({ ok: false, error: 'Usuario o contraseña incorrectos' });
+    }
 
     const user = result.rows[0];
-    if (!user.active) return res.json({ ok: false, error: 'Usuario inactivo' });
+
+    if (!user.active) {
+      return res.json({ ok: false, error: 'Usuario inactivo' });
+    }
 
     res.json({
       ok: true,
@@ -182,6 +187,7 @@ app.post('/api/usuarios', async (req, res) => {
 
   try {
     if (!pool) return res.status(500).json({ error: 'Sin DB' });
+
     await pool.query(`
       INSERT INTO usuarios (username, password, role, active)
       VALUES ($1, $2, $3, true)
@@ -204,7 +210,9 @@ app.delete('/api/usuarios/:username', async (req, res) => {
 
   try {
     if (!pool) return res.status(500).json({ error: 'Sin DB' });
+
     await pool.query('UPDATE usuarios SET active=false WHERE UPPER(username)=$1', [username]);
+
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -237,7 +245,11 @@ async function loadQADFromDB() {
       let data = row.data;
 
       if (typeof data === 'string') {
-        try { data = JSON.parse(data); } catch { data = []; }
+        try {
+          data = JSON.parse(data);
+        } catch {
+          data = [];
+        }
       }
 
       if (!Array.isArray(data)) data = data ? [data] : [];
@@ -259,6 +271,7 @@ async function loadQADFromDB() {
 
 async function clearQADFromDB() {
   if (!pool) return;
+
   try {
     await pool.query('DELETE FROM qad_data');
   } catch (e) {
@@ -272,9 +285,11 @@ const upload = multer({
   fileFilter: (req, file, cb) => {
     const allowed = ['.xlsx', '.xls', '.csv'];
     const ext = path.extname(file.originalname).toLowerCase();
+
     if (!allowed.includes(ext)) {
       return cb(new Error('Formato no permitido: ' + ext + '. Solo .xlsx, .xls, .csv'));
     }
+
     cb(null, true);
   },
 });
@@ -284,7 +299,9 @@ const uploadPDF = multer({
   limits: { fileSize: 50 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
+
     if (ext !== '.pdf') return cb(new Error('Solo se aceptan archivos PDF'));
+
     cb(null, true);
   },
 });
@@ -373,6 +390,7 @@ app.post('/api/qad/upload-pdf', uploadPDF.single('pdf'), async (req, res) => {
         .filter(l => l.length > 2);
 
       pdfData = lines.map(line => ({ texto: line }));
+
       console.log(`📄 PDF procesado: ${req.file.originalname} — ${lines.length} líneas`);
     } catch (pdfErr) {
       console.warn('Error leyendo PDF:', pdfErr.message);
@@ -418,7 +436,9 @@ app.get('/api/qad/status', async (req, res) => {
 app.delete('/api/qad/clear', async (req, res) => {
   qadDataCache = {};
   qadLastUpdate = null;
+
   await clearQADFromDB();
+
   res.json({ ok: true });
 });
 
@@ -552,7 +572,9 @@ app.post('/api/excel/generate', async (req, res) => {
 
     py.on('error', err => {
       console.error('Error iniciando Python:', err.message);
+
       const buffer = generateBasicExcelFallback(excelPayload);
+
       return res.json({
         ok: true,
         base64: buffer.toString('base64'),
@@ -566,7 +588,9 @@ app.post('/api/excel/generate', async (req, res) => {
       try {
         if (code !== 0) {
           console.error('Python Excel falló:', errOut);
+
           const buffer = generateBasicExcelFallback(excelPayload);
+
           return res.json({
             ok: true,
             base64: buffer.toString('base64'),
@@ -580,6 +604,7 @@ app.post('/api/excel/generate', async (req, res) => {
 
         if (!parsed.success) {
           const buffer = generateBasicExcelFallback(excelPayload);
+
           return res.json({
             ok: true,
             base64: buffer.toString('base64'),
@@ -590,7 +615,10 @@ app.post('/api/excel/generate', async (req, res) => {
         }
 
         const fileBuffer = fs.readFileSync(tmpPath);
-        try { fs.unlinkSync(tmpPath); } catch {}
+
+        try {
+          fs.unlinkSync(tmpPath);
+        } catch {}
 
         return res.json({
           ok: true,
@@ -600,7 +628,9 @@ app.post('/api/excel/generate', async (req, res) => {
         });
       } catch (e) {
         console.error('Error procesando Excel:', e.message);
+
         const buffer = generateBasicExcelFallback(excelPayload);
+
         return res.json({
           ok: true,
           base64: buffer.toString('base64'),
@@ -612,7 +642,9 @@ app.post('/api/excel/generate', async (req, res) => {
     });
   } catch (e) {
     console.error('Error Excel:', e.message);
+
     const buffer = generateBasicExcelFallback(excelPayload);
+
     return res.json({ ok: true, base64: buffer.toString('base64'), filename, fallback: true });
   }
 });
@@ -642,8 +674,13 @@ function rowsToTable(rows) {
   const lines = rows.map(row =>
     `| ${cols.map(col => {
       const v = row[col];
+
       if (v === null || v === undefined || v === '') return '-';
-      return String(v).replace(/\n/g, ' ').replace(/\|/g, '/').trim();
+
+      return String(v)
+        .replace(/\n/g, ' ')
+        .replace(/\|/g, '/')
+        .trim();
     }).join(' | ')} |`
   );
 
@@ -690,6 +727,7 @@ function buildQADContext(cache, messages) {
   };
 
   const msgCats = new Set();
+
   Object.entries(categories).forEach(([cat, words]) => {
     if (words.some(w => lastMsgNorm.includes(w))) msgCats.add(cat);
   });
@@ -704,6 +742,7 @@ function buildQADContext(cache, messages) {
 
   const sheetIndex = keys.map(k => {
     const c = cache[k];
+
     return `- ${c.filename} / Hoja: ${c.sheet}: ${Array.isArray(c.data) ? c.data.length : '?'} registros`;
   }).join('\n');
 
@@ -729,6 +768,7 @@ Responde con una tabla que incluya archivo, hoja, número de registros y posible
     const fileNorm = normalizeText(`${c.filename} ${c.sheet} ${key}`);
 
     const fileCats = new Set();
+
     Object.entries(categories).forEach(([cat, words]) => {
       if (words.some(w => fileNorm.includes(w))) fileCats.add(cat);
     });
@@ -745,14 +785,13 @@ Responde con una tabla que incluya archivo, hoja, número de registros y posible
         if (rowText.includes(kw)) score += 30;
 
         const words = rowText.split(' ');
+
         if (words.some(w => w.startsWith(kw) || kw.startsWith(w))) score += 10;
       }
 
       if (catMatch) score += 5;
 
-      if (score > 0) {
-        matchedRows.push({ row, score });
-      }
+      if (score > 0) matchedRows.push({ row, score });
     }
 
     matchedRows.sort((a, b) => b.score - a.score);
@@ -760,9 +799,9 @@ Responde con una tabla que incluya archivo, hoja, número de registros y posible
     let rowsToInclude = [];
 
     if (keywords.length > 0) {
-      rowsToInclude = matchedRows.slice(0, 300).map(r => r.row);
+      rowsToInclude = matchedRows.slice(0, 180).map(r => r.row);
     } else if (catMatch) {
-      rowsToInclude = rows.slice(0, 300);
+      rowsToInclude = rows.slice(0, 180);
     }
 
     if (rowsToInclude.length > 0) {
@@ -784,31 +823,33 @@ ${rowsToTable(rowsToInclude)}
 
   results.sort((a, b) => b.score - a.score);
 
-  const MAX_CHARS = 170000;
+  const MAX_CHARS = 90000;
   let totalChars = 0;
   const selected = [];
+  let selectedCount = 0;
 
   for (const r of results) {
-    if (totalChars + r.text.length > MAX_CHARS) {
-      if (selected.length === 0) {
-        selected.push(r.text.substring(0, MAX_CHARS - 200) + '\n...(datos truncados por límite)');
-      }
-      break;
-    }
+    if (selectedCount >= 8) break;
 
-    selected.push(r.text);
-    totalChars += r.text.length;
+    const trimmedText = r.text.substring(0, 12000);
+
+    if (totalChars + trimmedText.length > MAX_CHARS) break;
+
+    selected.push(trimmedText);
+    totalChars += trimmedText.length;
+    selectedCount++;
   }
 
   if (selected.length === 0) {
     const samples = keys.slice(0, 5).map(k => {
       const c = cache[k];
+
       return `
 ### ARCHIVO: ${c.filename}
 ### HOJA: ${c.sheet}
 ### TOTAL REGISTROS: ${c.data.length}
 
-${rowsToTable((c.data || []).slice(0, 40))}
+${rowsToTable((c.data || []).slice(0, 30))}
 `;
     }).join('\n');
 
@@ -912,13 +953,13 @@ REGLAS OBLIGATORIAS:
 3. Para cualquier consulta de clientes, saldos, cartera, ventas, pedidos, inventario o producción, responde con esta estructura:
 
 ## Resumen ejecutivo
-Explica en 3 a 6 líneas qué encontraste.
+Explica qué encontraste.
 
 ## Tabla de datos encontrados
-Incluye una tabla markdown con las columnas disponibles más importantes.
+Incluye tabla markdown con columnas importantes.
 
 ## Análisis
-Explica los puntos relevantes, riesgos, saldos, fechas, atrasos, cantidades o patrones.
+Explica puntos relevantes, riesgos, saldos, fechas, atrasos, cantidades o patrones.
 
 ## Observaciones
 Aclara si faltan campos, si hay varias coincidencias o si los datos parecen incompletos.
@@ -944,7 +985,7 @@ Sugiere qué revisar, exportar o confirmar.
 | Dato | Dato |
 
 7. Nunca respondas solo "no tengo información" si hay archivos QAD disponibles.
-8. No seas demasiado breve. AVIVA debe dar respuestas útiles y completas.
+8. No seas demasiado breve.
 9. No inventes números.
 10. Mantén exactamente nombres, códigos, fechas e importes como aparecen.
 `;
@@ -1007,7 +1048,9 @@ ${permContext}
         model: OPENAI_MODEL,
         messages: openaiMessages,
         temperature: 0.05,
-        max_tokens: 8000,
+        max_tokens: 4096,
+        presence_penalty: 0,
+        frequency_penalty: 0,
       }),
     });
 
