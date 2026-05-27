@@ -128,41 +128,88 @@ async function getQADSources() {
   } catch(e) { return []; }
 }
 
+// Detectar qué hojas son relevantes según la pregunta
+function detectRelevantSheets(userMessage, sources) {
+  const msg = norm(userMessage);
+
+  // Mapeo de palabras clave → patrones de nombre de archivo/hoja
+  const mappings = [
+    { keys: ['cartera','saldo','cliente','cxc','cobrar','deuda','vencido','antigüedad','antiguedad','adeudo','pago','atrasado','moroso','cobranza'], patterns: ['cxc','saldo','cliente','cartera','cobrar','antiguedad','antigüedad'] },
+    { keys: ['venta','factura','remision','remisión','ingreso','pedido'], patterns: ['venta','factura','remision','ingreso','pedido'] },
+    { keys: ['inventario','stock','existencia','almacen','almacén','producto','tela','material'], patterns: ['inventario','stock','existencia','almacen','producto','tela'] },
+    { keys: ['proveedor','cxp','pagar','compra','abastecimiento'], patterns: ['proveedor','cxp','pagar','compra'] },
+    { keys: ['especificacion','especificación','ficha','tecnica','técnica','tela','cardigan','jersey'], patterns: ['especificacion','ficha','tecnica','tela'] },
+    { keys: ['produccion','producción','manufactura','fabricacion','tejido','acabado'], patterns: ['produccion','manufactura','fabricacion','tejido'] },
+  ];
+
+  // Encontrar qué categoría aplica
+  let relevantPatterns = [];
+  for (const map of mappings) {
+    if (map.keys.some(k => msg.includes(k))) {
+      relevantPatterns = map.patterns;
+      break;
+    }
+  }
+
+  // Si no hay categoría específica, devolver todas las fuentes
+  if (!relevantPatterns.length) return sources;
+
+  // Filtrar fuentes que coincidan con los patrones
+  const relevant = sources.filter(src => {
+    const srcNorm = norm(`${src.filename} ${src.sheet_name}`);
+    return relevantPatterns.some(p => srcNorm.includes(p));
+  });
+
+  // Si encontró fuentes relevantes, usar esas; si no, usar todas
+  return relevant.length > 0 ? relevant : sources;
+}
+
 async function searchQAD(userMessage, maxRows = 500) {
   if (!pool) return { rows: [], total: 0, sources: [] };
 
-  const sources = await getQADSources();
-  if (!sources.length) return { rows: [], total: 0, sources: [] };
+  const allSources = await getQADSources();
+  if (!allSources.length) return { rows: [], total: 0, sources: [] };
 
-  const totalRows = sources.reduce((s, r) => s + (parseInt(r.count) || 0), 0);
+  const totalRows = allSources.reduce((s, r) => s + (parseInt(r.count) || 0), 0);
 
-  const stopWords = new Set(['dame','reporte','tabla','de','del','la','el','los','las','un','una','en','que','tienes','por','para','con','me','mi','mis','tu','sus','hay','son','mas','top','cinco','diez','todos','todas','cuales','cual','como','cuando','donde','quiero','ver','mostrar','genera','genera','dime','muestra','necesito']);
+  // Detectar hojas relevantes para esta pregunta
+  const relevantSources = detectRelevantSheets(userMessage, allSources);
+
+  console.log(`Buscando en ${relevantSources.length} de ${allSources.length} hojas para: "${userMessage.substring(0,50)}"`);
+  console.log(`Hojas seleccionadas: ${relevantSources.map(s => s.filename).join(', ')}`);
+
+  const stopWords = new Set(['dame','reporte','tabla','de','del','la','el','los','las','un','una','en','que','tienes','por','para','con','me','mi','mis','tu','sus','hay','son','mas','top','cinco','diez','todos','todas','cuales','cual','como','cuando','donde','quiero','ver','mostrar','genera','dime','muestra','necesito']);
   const msg = norm(userMessage);
   const keywords = msg.split(' ').filter(w => w.length > 2 && !stopWords.has(w));
 
   let allMatches = [];
 
-  for (const src of sources) {
+  for (const src of relevantSources) {
     try {
-      let rows = [];
-      if (keywords.length > 0) {
-        const conditions = keywords.map((_, i) => `lower(elem::text) LIKE $${i + 2}`).join(' OR ');
-        const q = `SELECT elem as row FROM qad_data, jsonb_array_elements(data) AS elem WHERE sheet_key = $1 AND (${conditions}) LIMIT 500`;
-        const r = await pool.query(q, [src.sheet_key, ...keywords.map(k => `%${k}%`)]);
-        rows = r.rows.map(r => r.row);
-      }
-      // Si no encontró nada con keywords, traer todos
-      if (!rows.length) {
-        const r = await pool.query(`SELECT jsonb_array_elements(data) as row FROM qad_data WHERE sheet_key = $1 LIMIT 500`, [src.sheet_key]);
-        rows = r.rows.map(r => r.row);
-      }
-      rows.forEach(row => allMatches.push({ ...row, _src: `${src.filename} / ${src.sheet_name}` }));
+      // Siempre traer TODOS los registros de hojas relevantes (son pocas y específicas)
+      const r = await pool.query(
+        `SELECT jsonb_array_elements(data) as row FROM qad_data WHERE sheet_key = $1`,
+        [src.sheet_key]
+      );
+      r.rows.forEach(row => allMatches.push({ ...row.row, _src: `${src.filename} / ${src.sheet_name}` }));
     } catch(e) {
       console.error('Error buscando en', src.sheet_key, e.message);
     }
   }
 
-  return { rows: allMatches.slice(0, maxRows), total: totalRows, sources };
+  // Si no encontró nada en hojas relevantes, buscar en todas con keywords
+  if (!allMatches.length && keywords.length > 0) {
+    for (const src of allSources.slice(0, 10)) {
+      try {
+        const conditions = keywords.map((_, i) => `lower(elem::text) LIKE $${i + 2}`).join(' OR ');
+        const q = `SELECT elem as row FROM qad_data, jsonb_array_elements(data) AS elem WHERE sheet_key = $1 AND (${conditions}) LIMIT 100`;
+        const r = await pool.query(q, [src.sheet_key, ...keywords.map(k => `%${k}%`)]);
+        r.rows.forEach(row => allMatches.push({ ...row.row, _src: `${src.filename} / ${src.sheet_name}` }));
+      } catch(e) {}
+    }
+  }
+
+  return { rows: allMatches.slice(0, maxRows), total: totalRows, sources: relevantSources };
 }
 
 async function buildQADContext(userMessage = '') {
