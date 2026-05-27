@@ -146,15 +146,10 @@ app.post('/api/login', async (req, res) => {
       [String(username).trim().toUpperCase(), password]
     );
 
-    if (result.rows.length === 0) {
-      return res.json({ ok: false, error: 'Usuario o contraseña incorrectos' });
-    }
+    if (result.rows.length === 0) return res.json({ ok: false, error: 'Usuario o contraseña incorrectos' });
 
     const user = result.rows[0];
-
-    if (!user.active) {
-      return res.json({ ok: false, error: 'Usuario inactivo' });
-    }
+    if (!user.active) return res.json({ ok: false, error: 'Usuario inactivo' });
 
     res.json({
       ok: true,
@@ -210,9 +205,7 @@ app.delete('/api/usuarios/:username', async (req, res) => {
 
   try {
     if (!pool) return res.status(500).json({ error: 'Sin DB' });
-
     await pool.query('UPDATE usuarios SET active=false WHERE UPPER(username)=$1', [username]);
-
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -436,9 +429,7 @@ app.get('/api/qad/status', async (req, res) => {
 app.delete('/api/qad/clear', async (req, res) => {
   qadDataCache = {};
   qadLastUpdate = null;
-
   await clearQADFromDB();
-
   res.json({ ok: true });
 });
 
@@ -572,7 +563,6 @@ app.post('/api/excel/generate', async (req, res) => {
 
     py.on('error', err => {
       console.error('Error iniciando Python:', err.message);
-
       const buffer = generateBasicExcelFallback(excelPayload);
 
       return res.json({
@@ -588,7 +578,6 @@ app.post('/api/excel/generate', async (req, res) => {
       try {
         if (code !== 0) {
           console.error('Python Excel falló:', errOut);
-
           const buffer = generateBasicExcelFallback(excelPayload);
 
           return res.json({
@@ -628,7 +617,6 @@ app.post('/api/excel/generate', async (req, res) => {
         });
       } catch (e) {
         console.error('Error procesando Excel:', e.message);
-
         const buffer = generateBasicExcelFallback(excelPayload);
 
         return res.json({
@@ -642,9 +630,7 @@ app.post('/api/excel/generate', async (req, res) => {
     });
   } catch (e) {
     console.error('Error Excel:', e.message);
-
     const buffer = generateBasicExcelFallback(excelPayload);
-
     return res.json({ ok: true, base64: buffer.toString('base64'), filename, fallback: true });
   }
 });
@@ -706,6 +692,40 @@ function getImportantKeywords(text) {
     .filter(w => w.length > 2 && !stopWords.has(w));
 }
 
+function formatQADFilesTable(cache) {
+  const keys = Object.keys(cache || {});
+
+  if (keys.length === 0) {
+    return 'No tengo archivos QAD cargados actualmente.';
+  }
+
+  const rows = keys.map(k => {
+    const c = cache[k] || {};
+    const registros = Array.isArray(c.data) ? c.data.length : 0;
+    const fecha = c.updatedAt ? new Date(c.updatedAt).toLocaleString('es-MX') : '-';
+
+    let uso = 'Datos generales';
+    const name = normalizeText(`${c.filename || ''} ${c.sheet || ''}`);
+
+    if (name.includes('cliente') || name.includes('cxc') || name.includes('cartera') || name.includes('saldo')) uso = 'Clientes / cartera / saldos';
+    else if (name.includes('venta') || name.includes('factur')) uso = 'Ventas / facturación';
+    else if (name.includes('pedido') || name.includes('orden')) uso = 'Pedidos / órdenes';
+    else if (name.includes('inventario') || name.includes('almacen') || name.includes('stock')) uso = 'Inventario / almacén';
+    else if (name.includes('produccion') || name.includes('tejido') || name.includes('acabado') || name.includes('merma')) uso = 'Producción / mermas';
+    else if (name.includes('pdf')) uso = 'PDF procesado';
+
+    return `| ${c.filename || '-'} | ${c.sheet || '-'} | ${registros} | ${uso} | ${fecha} |`;
+  }).join('\n');
+
+  return `## Archivos QAD cargados
+
+| Archivo | Hoja | Registros | Uso probable | Última actualización |
+|---|---|---:|---|---|
+${rows}
+
+Estos son los archivos disponibles en PostgreSQL para análisis. Puedes pedirme reportes por clientes, cartera, saldos, ventas, inventario, pedidos, producción o proveedores.`;
+}
+
 function buildQADContext(cache, messages) {
   const keys = Object.keys(cache || {});
   if (keys.length === 0) return '';
@@ -732,31 +752,13 @@ function buildQADContext(cache, messages) {
     if (words.some(w => lastMsgNorm.includes(w))) msgCats.add(cat);
   });
 
-  const wantsFiles =
-    lastMsgNorm.includes('que archivos') ||
-    lastMsgNorm.includes('que datos') ||
-    lastMsgNorm.includes('que tienes cargado') ||
-    lastMsgNorm.includes('archivos cargados');
-
-  const includeAll = msgCats.size === 0 || wantsFiles;
+  const includeAll = msgCats.size === 0;
 
   const sheetIndex = keys.map(k => {
     const c = cache[k];
 
     return `- ${c.filename} / Hoja: ${c.sheet}: ${Array.isArray(c.data) ? c.data.length : '?'} registros`;
   }).join('\n');
-
-  if (wantsFiles) {
-    return `
-===== DATOS QAD DISPONIBLES =====
-
-ARCHIVOS DISPONIBLES:
-${sheetIndex}
-
-INSTRUCCIÓN:
-Responde con una tabla que incluya archivo, hoja, número de registros y posible uso del archivo.
-`;
-  }
 
   const results = [];
 
@@ -1011,6 +1013,22 @@ app.post('/api/chat', async (req, res) => {
 
   try {
     const cache = pool ? await loadQADFromDB() : qadDataCache;
+
+    const lastMsg = messages[messages.length - 1]?.content || '';
+    const lastMsgNorm = normalizeText(lastMsg);
+
+    if (
+      lastMsgNorm.includes('que archivos') ||
+      lastMsgNorm.includes('archivos qad') ||
+      lastMsgNorm.includes('que datos tienes') ||
+      lastMsgNorm.includes('que tienes cargado') ||
+      lastMsgNorm.includes('archivos cargados')
+    ) {
+      return res.json({
+        reply: formatQADFilesTable(cache),
+      });
+    }
+
     const qadContext = buildQADContext(cache, messages);
     const permContext = buildPermissionContext(username);
     const executivePrompt = buildExecutivePrompt();
