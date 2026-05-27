@@ -375,13 +375,22 @@ ${qadCtx.hasData ? qadCtx.text : qadCtx.text}
 Usuario: ${username || 'Usuario'}
 Fecha: ${new Date().toLocaleString('es-MX', { timeZone: 'America/Mexico_City' })}`;
 
-    const cleanMessages = (messages || [])
-      .filter(m => m.role === 'user' || m.role === 'assistant')
-      .slice(-6)
+    // Limpiar y preparar mensajes para Claude
+    let cleanMessages = (messages || [])
+      .filter(m => (m.role === 'user' || m.role === 'assistant') && String(m.content || '').trim())
+      .slice(-10)
       .map(m => ({ role: m.role, content: String(m.content || '').substring(0, 2000) }));
 
-    if (!cleanMessages.length || cleanMessages[0].role !== 'user') {
-      return res.json({ reply: 'Por favor escribe tu pregunta.' });
+    // Asegurar que empiece con user — quitar assistants iniciales
+    while (cleanMessages.length && cleanMessages[0].role !== 'user') {
+      cleanMessages.shift();
+    }
+
+    // Si aún no hay mensajes válidos usar el último mensaje directo
+    if (!cleanMessages.length) {
+      const fallback = String(lastUserMsg || '').trim();
+      if (!fallback) return res.json({ reply: '¡Hola! Soy AVIVA, tu asistente de Vivatex. ¿En qué te puedo ayudar hoy?' });
+      cleanMessages = [{ role: 'user', content: fallback }];
     }
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
