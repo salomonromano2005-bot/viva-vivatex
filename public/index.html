@@ -7,13 +7,9 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="AVIVA">
-<meta name="application-name" content="AVIVA Vivatex">
-<link rel="manifest" href="/manifest.json">
-<link rel="apple-touch-icon" href="/icons/icon-192.png">
 <title>AVIVA — Asistente Inteligente Vivatex</title>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Sora:wght@400;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
 <style>
@@ -27,324 +23,191 @@
   --gray-mid: #2a3322;
   --sidebar-w: 270px;
   --radius: 16px;
-  --radius-sm: 10px;
   --shadow: 0 4px 24px rgba(0,0,0,0.09);
 }
 *{box-sizing:border-box;margin:0;padding:0;}
 html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;background:#f0f4ec;color:#1c2217;}
 
-/* ====== LOGIN ====== */
-#loginScreen{
-  position:fixed;inset:0;background:linear-gradient(145deg,#111610 0%,#1e2b17 55%,#162210 100%);
-  display:flex;align-items:center;justify-content:center;z-index:999;
-}
-.login-grid{
-  position:absolute;inset:0;opacity:0.04;
-  background-image:
-    repeating-linear-gradient(0deg,transparent,transparent 48px,#6BBF3E 48px,#6BBF3E 49px),
-    repeating-linear-gradient(90deg,transparent,transparent 48px,#6BBF3E 48px,#6BBF3E 49px);
-}
-.login-glow{
-  position:absolute;width:600px;height:600px;border-radius:50%;
-  background:radial-gradient(circle,rgba(107,191,62,0.12) 0%,transparent 70%);
-  top:50%;left:50%;transform:translate(-50%,-50%);
-}
-.login-card{
-  background:#fff;border-radius:24px;padding:52px 44px 40px;width:420px;max-width:92vw;
-  position:relative;z-index:1;box-shadow:0 32px 80px rgba(0,0,0,0.4);
-}
-.login-logo{text-align:center;margin-bottom:12px;}
-.login-logo img{height:72px;object-fit:contain;}
+/* LOGIN */
+#loginScreen{position:fixed;inset:0;background:linear-gradient(145deg,#111610 0%,#1e2b17 55%,#162210 100%);display:flex;align-items:center;justify-content:center;z-index:999;}
+.login-grid{position:absolute;inset:0;opacity:0.04;background-image:repeating-linear-gradient(0deg,transparent,transparent 48px,#6BBF3E 48px,#6BBF3E 49px),repeating-linear-gradient(90deg,transparent,transparent 48px,#6BBF3E 48px,#6BBF3E 49px);}
+.login-card{background:#fff;border-radius:24px;padding:52px 44px 40px;width:420px;max-width:92vw;position:relative;z-index:1;box-shadow:0 32px 80px rgba(0,0,0,0.4);}
 .login-brand{text-align:center;margin-bottom:8px;}
-.login-brand .viva{font-family:'Sora',sans-serif;font-size:42px;font-weight:700;color:var(--green);letter-spacing:-2px;line-height:1;}
+.login-brand .aviva{font-family:'Sora',sans-serif;font-size:42px;font-weight:700;color:var(--green);letter-spacing:-2px;line-height:1;}
 .login-brand .by{font-size:12px;color:#aab0a4;letter-spacing:3px;text-transform:uppercase;margin-top:4px;}
 .login-line{width:36px;height:3px;background:var(--green);border-radius:2px;margin:16px auto 28px;}
 .login-label{font-size:12px;font-weight:500;color:#6a7060;letter-spacing:0.6px;text-transform:uppercase;margin-bottom:7px;display:block;}
-.login-input{
-  width:100%;padding:13px 16px;border:1.5px solid #e0e8d8;border-radius:10px;
-  font-size:15px;font-family:'Outfit',sans-serif;background:#fafcf8;color:#1c2217;
-  transition:all 0.2s;outline:none;margin-bottom:16px;
-}
-.login-input:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(107,191,62,0.14);background:#fff;}
-.login-btn{
-  width:100%;padding:14px;background:var(--green);border:none;border-radius:10px;
-  color:#fff;font-size:16px;font-weight:600;font-family:'Outfit',sans-serif;
-  cursor:pointer;transition:all 0.2s;margin-top:4px;letter-spacing:0.3px;
-}
+.login-input{width:100%;padding:13px 16px;border:1.5px solid #e0e8d8;border-radius:10px;font-size:15px;font-family:'Outfit',sans-serif;background:#fafcf8;color:#1c2217;transition:all 0.2s;outline:none;margin-bottom:16px;}
+.login-input:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(107,191,62,0.14);}
+.login-btn{width:100%;padding:14px;background:var(--green);border:none;border-radius:10px;color:#fff;font-size:16px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer;transition:all 0.2s;margin-top:4px;}
 .login-btn:hover{background:var(--green-d);}
-.login-btn:active{transform:scale(0.98);}
-.login-err{
-  background:#fef2f2;border:1px solid #fecaca;color:#dc2626;
-  padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:14px;display:none;
-}
+.login-err{background:#fef2f2;border:1px solid #fecaca;color:#dc2626;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:14px;display:none;}
 .login-footer{text-align:center;font-size:12px;color:#bbc2b4;margin-top:24px;}
 
-/* ====== APP SHELL ====== */
+/* APP */
 #appScreen{display:none;height:100vh;flex-direction:row;}
 #appScreen.active{display:flex;}
 
-/* ====== SIDEBAR ====== */
-.sidebar{
-  width:var(--sidebar-w);min-width:var(--sidebar-w);background:var(--gray-dark);
-  display:flex;flex-direction:column;height:100vh;
-  transition:transform 0.3s;
-}
-.sidebar-logo{padding:22px 20px 16px;border-bottom:1px solid rgba(255,255,255,0.07);}
-.sidebar-logo img{height:44px;object-fit:contain;filter:brightness(1.1);}
-.sidebar-logo-text{margin-left:12px;display:inline-block;vertical-align:middle;}
+/* SIDEBAR */
+.sidebar{width:var(--sidebar-w);min-width:var(--sidebar-w);background:var(--gray-dark);display:flex;flex-direction:column;height:100vh;transition:transform 0.3s;}
+.sidebar-logo{padding:22px 20px 16px;border-bottom:1px solid rgba(255,255,255,0.07);display:flex;align-items:center;gap:10px;}
 .sidebar-logo-text .v{font-family:'Sora',sans-serif;font-size:22px;font-weight:700;color:var(--green);letter-spacing:-1px;}
 .sidebar-logo-text .s{font-size:10px;color:rgba(255,255,255,0.4);letter-spacing:2px;display:block;text-transform:uppercase;}
-.sidebar-user{
-  padding:14px 16px;margin:14px 12px 6px;border-radius:10px;
-  background:rgba(107,191,62,0.1);border:1px solid rgba(107,191,62,0.2);
-}
+.sidebar-user{padding:14px 16px;margin:14px 12px 6px;border-radius:10px;background:rgba(107,191,62,0.1);border:1px solid rgba(107,191,62,0.2);}
 .sidebar-user .su-name{font-size:13px;font-weight:600;color:rgba(255,255,255,0.9);}
 .sidebar-user .su-role{font-size:11px;color:var(--green);margin-top:2px;}
 .sidebar-section{padding:16px 12px 4px;}
 .sidebar-section-title{font-size:10px;color:rgba(255,255,255,0.3);text-transform:uppercase;letter-spacing:2px;padding:0 6px;}
-.sidebar-btn{
-  display:flex;align-items:center;gap:10px;width:100%;padding:11px 14px;border:none;
-  background:transparent;border-radius:8px;color:rgba(255,255,255,0.65);
-  font-size:13px;font-family:'Outfit',sans-serif;cursor:pointer;transition:all 0.15s;
-  text-align:left;margin-bottom:2px;
-}
+.sidebar-btn{display:flex;align-items:center;gap:10px;width:100%;padding:11px 14px;border:none;background:transparent;border-radius:8px;color:rgba(255,255,255,0.65);font-size:13px;font-family:'Outfit',sans-serif;cursor:pointer;transition:all 0.15s;text-align:left;margin-bottom:2px;}
 .sidebar-btn:hover{background:rgba(255,255,255,0.07);color:rgba(255,255,255,0.9);}
 .sidebar-btn.active{background:rgba(107,191,62,0.15);color:var(--green);}
-.sidebar-btn svg{width:16px;height:16px;flex-shrink:0;opacity:0.8;}
+.sidebar-btn svg{width:16px;height:16px;flex-shrink:0;}
 .sidebar-spacer{flex:1;}
-.sidebar-new-chat{
-  margin:0 12px 8px;padding:11px;background:var(--green);border:none;border-radius:10px;
-  color:#fff;font-size:13px;font-weight:600;font-family:'Outfit',sans-serif;
-  cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:8px;
-}
+.sidebar-new-chat{margin:0 12px 8px;padding:11px;background:var(--green);border:none;border-radius:10px;color:#fff;font-size:13px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:8px;}
 .sidebar-new-chat:hover{background:var(--green-d);}
-.sidebar-logout{
-  margin:0 12px 16px;padding:10px;background:transparent;border:1px solid rgba(255,255,255,0.1);
-  border-radius:10px;color:rgba(255,255,255,0.45);font-size:13px;font-family:'Outfit',sans-serif;
-  cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:8px;
-}
+.sidebar-logout{margin:0 12px 16px;padding:10px;background:transparent;border:1px solid rgba(255,255,255,0.1);border-radius:10px;color:rgba(255,255,255,0.45);font-size:13px;font-family:'Outfit',sans-serif;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:8px;}
 .sidebar-logout:hover{background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.7);}
 .history-list{overflow-y:auto;max-height:200px;padding:0 12px;}
-.history-item{
-  padding:9px 12px;border-radius:8px;cursor:pointer;font-size:12px;color:rgba(255,255,255,0.55);
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:all 0.15s;margin-bottom:2px;
-}
+.history-item{padding:9px 12px;border-radius:8px;cursor:pointer;font-size:12px;color:rgba(255,255,255,0.55);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:all 0.15s;margin-bottom:2px;}
 .history-item:hover{background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.8);}
-.history-item{display:flex;align-items:center;gap:4px;}
 
-/* ====== MAIN CHAT ====== */
+/* CHAT */
 .main-area{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;}
-.chat-topbar{
-  padding:16px 24px;border-bottom:1px solid #e4eade;background:#fff;
-  display:flex;align-items:center;justify-content:space-between;flex-shrink:0;
-}
+.chat-topbar{padding:16px 24px;border-bottom:1px solid #e4eade;background:#fff;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
 .chat-topbar-left{display:flex;align-items:center;gap:12px;}
 .chat-topbar-title{font-family:'Sora',sans-serif;font-size:18px;font-weight:600;color:#1c2217;}
 .chat-topbar-status{display:flex;align-items:center;gap:6px;font-size:12px;color:#6a7060;}
 .status-dot{width:7px;height:7px;border-radius:50%;background:var(--green);animation:pulse 2s infinite;}
 @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.4;}}
 .chat-topbar-actions{display:flex;gap:8px;}
-.topbar-btn{
-  padding:7px 14px;border:1.5px solid #d4e0c8;border-radius:8px;background:#fff;
-  color:#5a6a50;font-size:12px;font-weight:500;font-family:'Outfit',sans-serif;cursor:pointer;
-  transition:all 0.15s;display:flex;align-items:center;gap:6px;
-}
+.topbar-btn{padding:7px 14px;border:1.5px solid #d4e0c8;border-radius:8px;background:#fff;color:#5a6a50;font-size:12px;font-weight:500;font-family:'Outfit',sans-serif;cursor:pointer;transition:all 0.15s;display:flex;align-items:center;gap:6px;}
 .topbar-btn:hover{background:var(--green-l);border-color:var(--green);color:var(--green-d);}
-.topbar-btn svg{width:14px;height:14px;}
 .mobile-menu-btn{display:none;background:none;border:none;cursor:pointer;padding:4px;}
 
 .chat-messages{flex:1;overflow-y:auto;padding:32px 24px;display:flex;flex-direction:column;gap:24px;}
 .chat-messages::-webkit-scrollbar{width:4px;}
-.chat-messages::-webkit-scrollbar-track{background:transparent;}
 .chat-messages::-webkit-scrollbar-thumb{background:#d0dbc8;border-radius:4px;}
 
-/* Welcome screen */
-.welcome-screen{
-  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
-  padding:40px 24px;text-align:center;
-}
-.welcome-icon{
-  width:80px;height:80px;background:var(--green-l);border-radius:50%;
-  display:flex;align-items:center;justify-content:center;margin-bottom:20px;
-}
-.welcome-icon img{height:48px;object-fit:contain;}
+/* WELCOME */
+.welcome-screen{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 24px;text-align:center;}
+.welcome-icon{width:80px;height:80px;background:var(--green-l);border-radius:50%;display:flex;align-items:center;justify-content:center;margin-bottom:20px;}
 .welcome-title{font-family:'Sora',sans-serif;font-size:28px;font-weight:700;color:#1c2217;margin-bottom:8px;}
 .welcome-title span{color:var(--green);}
 .welcome-sub{font-size:15px;color:#7a8670;max-width:440px;line-height:1.6;margin-bottom:36px;}
 .welcome-chips{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;max-width:560px;}
-.chip{
-  padding:10px 18px;background:#fff;border:1.5px solid #d8e8cc;border-radius:50px;
-  font-size:13px;color:#4a6038;cursor:pointer;transition:all 0.2s;font-weight:500;
-}
+.chip{padding:10px 18px;background:#fff;border:1.5px solid #d8e8cc;border-radius:50px;font-size:13px;color:#4a6038;cursor:pointer;transition:all 0.2s;font-weight:500;}
 .chip:hover{background:var(--green-l);border-color:var(--green);color:var(--green-d);}
 
-/* Messages */
+/* MESSAGES */
 .msg{display:flex;gap:12px;animation:msgIn 0.25s ease;}
 @keyframes msgIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
 .msg.user{flex-direction:row-reverse;}
-.msg-avatar{
-  width:36px;height:36px;border-radius:50%;flex-shrink:0;
-  display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;
-}
+.msg-avatar{width:36px;height:36px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;}
 .msg.assistant .msg-avatar{background:var(--green-l);color:var(--green-d);}
 .msg.user .msg-avatar{background:#e8f0ff;color:#3b5bdb;}
-.msg-bubble{max-width:70%;padding:14px 18px;border-radius:18px;font-size:15px;line-height:1.65;}
+.msg-bubble{max-width:75%;padding:14px 18px;border-radius:18px;font-size:14px;line-height:1.7;}
 .msg.assistant .msg-bubble{background:#fff;border:1px solid #e4eade;border-bottom-left-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,0.05);}
 .msg.user .msg-bubble{background:var(--green);color:#fff;border-bottom-right-radius:4px;}
-.msg-bubble p{margin-bottom:8px;}
-.msg-bubble p:last-child{margin-bottom:0;}
-.msg-bubble strong{font-weight:600;}
-.msg-bubble table{border-collapse:collapse;width:100%;font-size:13px;margin:10px 0;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.07);}
-.msg-bubble th{background:#1E6B2E;color:#fff;padding:10px 14px;text-align:left;font-weight:600;font-size:12px;letter-spacing:0.3px;}
-.msg-bubble td{padding:8px 14px;border-bottom:1px solid #e4eed8;color:#2d2d2d;font-size:13px;}
+
+/* TABLAS EN CHAT */
+.msg-bubble table{border-collapse:collapse;width:100%;font-size:13px;margin:12px 0;border-radius:8px;overflow:hidden;box-shadow:0 1px 6px rgba(0,0,0,0.08);}
+.msg-bubble th{background:#1E6B2E;color:#fff;padding:10px 14px;text-align:left;font-weight:600;font-size:12px;letter-spacing:0.3px;white-space:nowrap;}
+.msg-bubble td{padding:9px 14px;border-bottom:1px solid #e4eed8;color:#2d2d2d;font-size:13px;}
 .msg-bubble tr:nth-child(even) td{background:#f5faf3;}
 .msg-bubble tr:hover td{background:#edf7e8;}
 .msg-bubble tr:last-child td{border-bottom:none;}
-.chart-container{background:#fff;border:1px solid #e4eade;border-radius:12px;padding:16px;margin:12px 0;box-shadow:0 2px 10px rgba(0,0,0,0.06);}
-.chart-container canvas{max-height:320px;}
-.chart-title{font-size:13px;font-weight:700;color:#1E6B2E;margin-bottom:10px;text-align:center;letter-spacing:0.3px;}
-.chart-type-btns{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;}
-.chart-type-btn{background:#f0f7e8;border:1px solid #c8e6b0;color:#1E6B2E;border-radius:6px;padding:3px 10px;font-size:11px;font-weight:600;cursor:pointer;transition:all .2s;}
-.chart-type-btn.active{background:#1E6B2E;color:#fff;border-color:#1E6B2E;}
-.chart-type-btn:hover{background:#6BBF3E;color:#fff;border-color:#6BBF3E;}
+.msg-bubble p{margin-bottom:8px;}
+.msg-bubble p:last-child{margin-bottom:0;}
+.msg-bubble strong{font-weight:600;color:#1E6B2E;}
+.msg.user .msg-bubble strong{color:#fff;}
+.msg-bubble h2{font-size:15px;font-weight:700;color:#1E6B2E;margin:12px 0 6px;}
+.msg-bubble h3{font-size:14px;font-weight:600;color:#2d7a10;margin:10px 0 5px;}
+.msg-bubble ul{margin:6px 0 6px 18px;}
+.msg-bubble li{margin:3px 0;}
+.msg-bubble code{background:#f0f7e8;padding:2px 6px;border-radius:4px;font-family:monospace;font-size:12px;}
 .msg-time{font-size:11px;color:#aab4a0;margin-top:6px;text-align:right;}
 .msg.user .msg-time{color:rgba(255,255,255,0.6);}
 
-/* Typing indicator */
+/* TYPING */
 .typing-indicator{display:flex;gap:5px;padding:14px 18px;background:#fff;border:1px solid #e4eade;border-radius:18px;border-bottom-left-radius:4px;width:fit-content;box-shadow:0 2px 8px rgba(0,0,0,0.05);}
 .typing-dot{width:7px;height:7px;border-radius:50%;background:#aac090;animation:typingBounce 1.2s infinite;}
 .typing-dot:nth-child(2){animation-delay:0.2s;}
 .typing-dot:nth-child(3){animation-delay:0.4s;}
 @keyframes typingBounce{0%,60%,100%{transform:translateY(0);}30%{transform:translateY(-8px);}}
 
-/* Input area */
-.chat-input-area{
-  padding:16px 24px 20px;background:#fff;border-top:1px solid #e4eade;flex-shrink:0;
-}
-.chat-input-wrap{
-  display:flex;align-items:flex-end;gap:10px;background:#f6faf2;
-  border:1.5px solid #d4e0c8;border-radius:16px;padding:10px 12px;
-  transition:border-color 0.2s;
-}
+/* INPUT */
+.chat-input-area{padding:16px 24px 20px;background:#fff;border-top:1px solid #e4eade;flex-shrink:0;}
+.chat-input-wrap{display:flex;align-items:flex-end;gap:10px;background:#f6faf2;border:1.5px solid #d4e0c8;border-radius:16px;padding:10px 12px;transition:border-color 0.2s;}
 .chat-input-wrap:focus-within{border-color:var(--green);box-shadow:0 0 0 3px rgba(107,191,62,0.1);}
-#msgInput{
-  flex:1;background:transparent;border:none;outline:none;resize:none;
-  font-size:15px;font-family:'Outfit',sans-serif;color:#1c2217;max-height:160px;
-  min-height:24px;line-height:1.5;padding:2px 0;
-}
+#msgInput{flex:1;background:transparent;border:none;outline:none;resize:none;font-size:15px;font-family:'Outfit',sans-serif;color:#1c2217;max-height:160px;min-height:24px;line-height:1.5;padding:2px 0;}
 #msgInput::placeholder{color:#a0ac96;}
 .attach-btn{background:none;border:none;cursor:pointer;padding:6px 8px;color:#6BBF3E;display:flex;align-items:center;border-radius:8px;transition:background 0.15s;}
 .attach-btn:hover{background:#e8f5df;}
 .attach-btn svg{width:20px;height:20px;}
-.attach-btn.mic-active{color:#e53e3e;animation:pulse 1s infinite;}
-@keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.5;}}
-.send-btn{
-  width:38px;height:38px;background:var(--green);border:none;border-radius:10px;
-  display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;
-  transition:all 0.15s;
-}
+.send-btn{width:38px;height:38px;background:var(--green);border:none;border-radius:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:all 0.15s;}
 .send-btn:hover{background:var(--green-d);}
-.send-btn:active{transform:scale(0.94);}
 .send-btn:disabled{background:#cde8b8;cursor:not-allowed;}
 .send-btn svg{width:18px;height:18px;color:#fff;}
 .input-hint{font-size:11px;color:#a0ac96;text-align:center;margin-top:8px;}
 
-/* ====== ADMIN PANEL ====== */
+/* ADMIN */
 #adminPanel{display:none;flex:1;flex-direction:column;overflow:hidden;}
 #adminPanel.active{display:flex;}
-.admin-topbar{
-  padding:16px 28px;border-bottom:1px solid #e4eade;background:#fff;
-  display:flex;align-items:center;justify-content:space-between;flex-shrink:0;
-}
+.admin-topbar{padding:16px 28px;border-bottom:1px solid #e4eade;background:#fff;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
 .admin-topbar-title{font-family:'Sora',sans-serif;font-size:18px;font-weight:600;color:#1c2217;}
 .admin-body{flex:1;overflow-y:auto;padding:28px;}
 .admin-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:28px;}
-.stat-card{
-  background:#fff;border-radius:14px;padding:20px 22px;border:1px solid #e4eade;
-  box-shadow:0 2px 12px rgba(0,0,0,0.04);
-}
+.stat-card{background:#fff;border-radius:14px;padding:20px 22px;border:1px solid #e4eade;box-shadow:0 2px 12px rgba(0,0,0,0.04);}
 .stat-card .sc-label{font-size:12px;color:#7a8670;font-weight:500;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:8px;}
 .stat-card .sc-value{font-size:28px;font-weight:700;color:#1c2217;font-family:'Sora',sans-serif;}
 .stat-card .sc-sub{font-size:12px;color:var(--green);margin-top:4px;}
 .admin-section{background:#fff;border-radius:14px;border:1px solid #e4eade;margin-bottom:20px;overflow:hidden;}
-.admin-section-head{
-  padding:16px 22px;border-bottom:1px solid #e8f0e0;display:flex;align-items:center;
-  justify-content:space-between;
-}
+.admin-section-head{padding:16px 22px;border-bottom:1px solid #e8f0e0;display:flex;align-items:center;justify-content:space-between;}
 .admin-section-head h3{font-size:15px;font-weight:600;color:#1c2217;}
 .admin-section-body{padding:20px 22px;}
 .users-table{width:100%;border-collapse:collapse;font-size:14px;}
 .users-table th{text-align:left;padding:10px 14px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.6px;color:#7a8670;border-bottom:1px solid #e8f0e0;}
 .users-table td{padding:12px 14px;border-bottom:1px solid #f2f7ee;color:#2a3422;}
 .users-table tr:last-child td{border-bottom:none;}
-.users-table tr:hover td{background:#fafdf6;}
 .badge{padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;}
 .badge-green{background:#e8f5df;color:#2d7a10;}
 .badge-gray{background:#f0f0ee;color:#6a7060;}
 .badge-blue{background:#e8f0ff;color:#2d4adb;}
-.action-btn{
-  padding:6px 12px;border-radius:7px;border:1.5px solid #d4e0c8;background:#fff;
-  font-size:12px;font-weight:500;cursor:pointer;color:#4a6038;transition:all 0.15s;
-  font-family:'Outfit',sans-serif;margin-right:6px;
-}
+.action-btn{padding:6px 12px;border-radius:7px;border:1.5px solid #d4e0c8;background:#fff;font-size:12px;font-weight:500;cursor:pointer;color:#4a6038;transition:all 0.15s;font-family:'Outfit',sans-serif;margin-right:6px;}
 .action-btn:hover{background:var(--green-l);border-color:var(--green);}
 .action-btn.danger{border-color:#fca5a5;color:#dc2626;}
-.action-btn.danger:hover{background:#fef2f2;}
 .admin-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
 .admin-form-field{display:flex;flex-direction:column;gap:6px;}
 .admin-form-field label{font-size:12px;font-weight:500;color:#6a7060;text-transform:uppercase;letter-spacing:0.5px;}
-.admin-form-field input, .admin-form-field select{
-  padding:10px 14px;border:1.5px solid #d4e0c8;border-radius:8px;font-size:14px;
-  font-family:'Outfit',sans-serif;background:#fafcf8;color:#1c2217;outline:none;transition:all 0.2s;
-}
-.admin-form-field input:focus, .admin-form-field select:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(107,191,62,0.1);}
-.admin-save-btn{
-  padding:10px 24px;background:var(--green);border:none;border-radius:8px;
-  color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif;
-  transition:all 0.2s;margin-top:16px;
-}
+.admin-form-field input,.admin-form-field select{padding:10px 14px;border:1.5px solid #d4e0c8;border-radius:8px;font-size:14px;font-family:'Outfit',sans-serif;background:#fafcf8;color:#1c2217;outline:none;transition:all 0.2s;}
+.admin-form-field input:focus,.admin-form-field select:focus{border-color:var(--green);}
+.admin-save-btn{padding:10px 24px;background:var(--green);border:none;border-radius:8px;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif;transition:all 0.2s;margin-top:16px;}
 .admin-save-btn:hover{background:var(--green-d);}
-.log-entry{
-  padding:10px 14px;border-radius:8px;margin-bottom:6px;font-size:13px;
-  background:#fafdf6;border-left:3px solid var(--green);color:#2a3422;
-  display:flex;align-items:center;justify-content:space-between;
-}
-.log-time{font-size:11px;color:#9aaa90;margin-top:2px;}
 .qad-status{display:flex;align-items:center;gap:10px;padding:14px 18px;background:#f4faf0;border-radius:10px;border:1px solid #d4e8c4;}
 .qad-dot{width:10px;height:10px;border-radius:50%;background:var(--green);}
 .qad-dot.offline{background:#f87171;}
-.qad-info{flex:1;}
-.qad-info strong{font-size:14px;color:#1c2217;}
-.qad-info span{font-size:12px;color:#7a8670;display:block;}
 .nav-tabs{display:flex;gap:4px;background:#f4f6f0;border-radius:10px;padding:4px;margin-bottom:24px;}
-.nav-tab{
-  flex:1;padding:9px 12px;border:none;background:transparent;border-radius:8px;
-  font-size:13px;font-weight:500;cursor:pointer;color:#6a7060;font-family:'Outfit',sans-serif;transition:all 0.2s;
-}
+.nav-tab{flex:1;padding:9px 12px;border:none;background:transparent;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;color:#6a7060;font-family:'Outfit',sans-serif;transition:all 0.2s;}
 .nav-tab.active{background:#fff;color:var(--green-d);box-shadow:0 1px 4px rgba(0,0,0,0.08);}
 
-/* ====== MOBILE ====== */
+/* MOBILE */
 .mobile-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:90;}
 @media(max-width:768px){
   .sidebar{position:fixed;left:0;top:0;bottom:0;z-index:100;transform:translateX(-100%);}
   .sidebar.open{transform:translateX(0);}
   .mobile-menu-btn{display:block;}
   .mobile-overlay{display:block;}
-  .chat-topbar{padding:12px 16px;}
   .chat-messages{padding:20px 16px;}
   .chat-input-area{padding:12px 16px 16px;}
-  .msg-bubble{max-width:85%;}
+  .msg-bubble{max-width:88%;}
   .topbar-btn span{display:none;}
   .admin-grid{grid-template-columns:1fr 1fr;}
   .admin-form-grid{grid-template-columns:1fr;}
   .admin-body{padding:16px;}
 }
 
-/* Modal */
-.modal-overlay{
-  position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:500;
-  display:none;align-items:center;justify-content:center;padding:20px;
-}
+/* MODAL */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:500;display:none;align-items:center;justify-content:center;padding:20px;}
 .modal-overlay.open{display:flex;}
 .modal{background:#fff;border-radius:18px;padding:28px;width:100%;max-width:440px;box-shadow:0 24px 60px rgba(0,0,0,0.2);}
 .modal h3{font-size:17px;font-weight:600;margin-bottom:20px;color:#1c2217;}
@@ -352,55 +215,44 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;background
 .modal-cancel{padding:9px 20px;border:1.5px solid #d4e0c8;border-radius:8px;background:#fff;font-size:14px;cursor:pointer;font-family:'Outfit',sans-serif;}
 .modal-confirm{padding:9px 20px;border:none;border-radius:8px;background:var(--green);color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif;}
 
-/* Toast */
-.toast{
-  position:fixed;bottom:24px;right:24px;background:#1a1f16;color:#fff;
-  padding:12px 20px;border-radius:10px;font-size:14px;z-index:9999;
-  transform:translateY(60px);opacity:0;transition:all 0.3s;box-shadow:0 8px 24px rgba(0,0,0,0.2);
-}
+/* TOAST */
+.toast{position:fixed;bottom:24px;right:24px;background:#1a1f16;color:#fff;padding:12px 20px;border-radius:10px;font-size:14px;z-index:9999;transform:translateY(60px);opacity:0;transition:all 0.3s;box-shadow:0 8px 24px rgba(0,0,0,0.2);}
 .toast.show{transform:translateY(0);opacity:1;}
 .toast.success{border-left:3px solid var(--green);}
 .toast.error{border-left:3px solid #ef4444;}
 
-/* Scrollbar */
 ::-webkit-scrollbar{width:5px;height:5px;}
-::-webkit-scrollbar-track{background:transparent;}
 ::-webkit-scrollbar-thumb{background:#c8d8bc;border-radius:4px;}
 </style>
 </head>
 <body>
 
-<!-- ===== LOGIN ===== -->
+<!-- LOGIN -->
 <div id="loginScreen">
   <div class="login-grid"></div>
-  <div class="login-glow"></div>
   <div class="login-card">
-    <div class="login-logo">
-      <img src="/icons/vivatex-logo.png" alt="Vivatex" onerror="this.style.display='none'">
-    </div>
     <div class="login-brand">
       <div class="aviva">AVIVA</div>
       <div class="by">by Grupo Vivatex</div>
     </div>
     <div class="login-line"></div>
-    <div class="login-err" id="loginErr">Usuario o contraseña incorrectos</div>
+    <div class="login-err" id="loginErr"></div>
     <label class="login-label" for="loginUser">Usuario</label>
     <input class="login-input" type="text" id="loginUser" placeholder="Ingresa tu usuario" autocomplete="username">
     <label class="login-label" for="loginPass">Contraseña</label>
     <input class="login-input" type="password" id="loginPass" placeholder="••••••••••" autocomplete="current-password">
-    <button class="login-btn" id="loginBtn" type="button">Iniciar sesión</button>
+    <button class="login-btn" id="loginBtn">Iniciar sesión</button>
     <div class="login-footer">Sistema de uso exclusivo · Grupo Vivatex S.A. de C.V.</div>
   </div>
 </div>
 
-<!-- ===== APP ===== -->
+<!-- APP -->
 <div id="appScreen">
   <div class="mobile-overlay" id="mobileOverlay" onclick="closeSidebar()"></div>
 
-  <!-- Sidebar -->
+  <!-- SIDEBAR -->
   <div class="sidebar" id="sidebar">
     <div class="sidebar-logo">
-      <img src="/icons/vivatex-logo.png" alt="Vivatex" style="height:36px;vertical-align:middle;" onerror="this.style.display='none'">
       <div class="sidebar-logo-text">
         <span class="v">AVIVA</span>
         <span class="s">Vivatex AI</span>
@@ -436,7 +288,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;background
     </button>
   </div>
 
-  <!-- Chat Area -->
+  <!-- CHAT -->
   <div class="main-area" id="chatArea">
     <div class="chat-topbar">
       <div class="chat-topbar-left">
@@ -445,61 +297,39 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;background
         </button>
         <div>
           <div class="chat-topbar-title">AVIVA</div>
-          <div class="chat-topbar-status">
-            <div class="status-dot"></div>
-            <span id="qadStatusText">Conectado a QAD</span>
-          </div>
+          <div class="chat-topbar-status"><div class="status-dot"></div><span>Conectado a QAD</span></div>
         </div>
       </div>
       <div class="chat-topbar-actions">
         <button class="topbar-btn" onclick="exportExcel()">
-          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
           <span>Excel</span>
         </button>
         <button class="topbar-btn" onclick="exportPDF()">
-          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
           <span>PDF</span>
         </button>
       </div>
     </div>
 
-    <div class="chat-messages" id="chatMessages">
-      <div class="welcome-screen" id="welcomeScreen">
-        <div class="welcome-icon">
-          <svg width="40" height="40" fill="none" viewBox="0 0 24 24" stroke="#4a9a20" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23-.693L5 14.5m14.8.8l1.402 1.402c1 1 .316 2.702-1.067 2.702H4.865c-1.383 0-2.067-1.702-1.067-2.702L5 14.5"/></svg>
-        </div>
-        <div class="welcome-title">Hola, soy <span>AVIVA</span> 👋</div>
-        <div class="welcome-sub">Tu asistente inteligente conectado al sistema QAD de Vivatex. Puedo ayudarte con ventas, inventario, reportes y mucho más.</div>
-        <div class="welcome-chips">
-          <div class="chip" onclick="sendChip('¿Cuáles son las ventas del mes actual?')">📊 Ventas del mes</div>
-          <div class="chip" onclick="sendChip('Muéstrame el inventario disponible')">📦 Inventario</div>
-          <div class="chip" onclick="sendChip('Genera un reporte de clientes principales')">👥 Clientes</div>
-          <div class="chip" onclick="sendChip('¿Cuáles son las órdenes de compra pendientes?')">🧾 Órdenes pendientes</div>
-          <div class="chip" onclick="sendChip('Dame el resumen financiero del mes')">💰 Resumen financiero</div>
-          <div class="chip" onclick="sendChip('¿Qué productos tienen baja existencia?')">⚠️ Stock bajo</div>
-        </div>
-      </div>
-    </div>
+    <div class="chat-messages" id="chatMessages"></div>
 
     <div class="chat-input-area">
       <div class="chat-input-wrap">
-        <button class="attach-btn" onclick="document.getElementById('fileInput').click()" title="Subir Excel o CSV de QAD">
+        <button class="attach-btn" onclick="document.getElementById('fileInput').click()" title="Subir archivo QAD">
           <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/></svg>
         </button>
-        <input type="file" id="fileInput" accept=".xlsx,.xls,.csv,.pdf,.png,.jpg,.jpeg,.gif,.webp" multiple style="display:none" onchange="handleFileUpload(this)">
-        <button class="attach-btn" id="micBtn" onclick="toggleVoice()" title="Hablar con AVIVA">
-          <svg id="micIcon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/></svg>
-        </button>
-        <textarea id="msgInput" rows="1" placeholder="Pregúntale algo a AVIVA… 📎 archivos o 🎤 voz" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+        <input type="file" id="fileInput" accept=".xlsx,.xls,.csv,.pdf" multiple style="display:none" onchange="handleFileUpload(this)">
+        <textarea id="msgInput" rows="1" placeholder="Pregúntale algo a AVIVA…" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
         <button class="send-btn" id="sendBtn" onclick="sendMessage()">
           <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.772 59.772 0 013.27 20.876L5.999 12zm0 0h7.5"/></svg>
         </button>
       </div>
-      <div class="input-hint">AAVIVA puede cometer errores. Verifica información crítica en QAD directamente.</div>
+      <div class="input-hint">AVIVA puede cometer errores. Verifica información crítica en QAD directamente.</div>
     </div>
   </div>
 
-  <!-- Admin Panel -->
+  <!-- ADMIN -->
   <div id="adminPanel">
     <div class="admin-topbar">
       <div class="chat-topbar-left">
@@ -513,40 +343,38 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;background
       <div class="nav-tabs">
         <button class="nav-tab active" onclick="adminTab('overview',this)">Vista general</button>
         <button class="nav-tab" onclick="adminTab('users',this)">Usuarios</button>
-        <button class="nav-tab" onclick="adminTab('qad',this)">Conexión QAD</button>
-        <button class="nav-tab" onclick="adminTab('logs',this)">Logs</button>
+        <button class="nav-tab" onclick="adminTab('qad',this)">Archivos QAD</button>
       </div>
 
-      <!-- Overview Tab -->
+      <!-- Overview -->
       <div id="tabOverview">
         <div class="admin-grid">
-          <div class="stat-card"><div class="sc-label">Usuarios activos</div><div class="sc-value" id="statUsers">6</div><div class="sc-sub">Total registrados</div></div>
-          <div class="stat-card"><div class="sc-label">Estado QAD</div><div class="sc-value" style="font-size:20px;color:var(--green)" id="statQAD">Conectado</div><div class="sc-sub" id="statQADsub">API respondiendo</div></div>
-          <div class="stat-card"><div class="sc-label">Consultas hoy</div><div class="sc-value" id="statQueries">—</div><div class="sc-sub">En todas las sesiones</div></div>
-          <div class="stat-card"><div class="sc-label">Versión AVIVA</div><div class="sc-value" style="font-size:20px">1.0.0</div><div class="sc-sub">Actualizado hoy</div></div>
+          <div class="stat-card"><div class="sc-label">Usuarios activos</div><div class="sc-value" id="statUsers">—</div><div class="sc-sub">Registrados</div></div>
+          <div class="stat-card"><div class="sc-label">Registros QAD</div><div class="sc-value" id="statQAD" style="font-size:20px;color:var(--green)">—</div><div class="sc-sub" id="statQADsub">Cargados en sistema</div></div>
+          <div class="stat-card"><div class="sc-label">Modelo IA</div><div class="sc-value" style="font-size:16px">Claude</div><div class="sc-sub">Anthropic</div></div>
+          <div class="stat-card"><div class="sc-label">Versión</div><div class="sc-value" style="font-size:20px">1.0.0</div><div class="sc-sub">AVIVA Vivatex</div></div>
         </div>
         <div class="admin-section">
           <div class="admin-section-head"><h3>Estado del sistema</h3></div>
           <div class="admin-section-body">
-            <div class="qad-status" id="qadStatusCard">
+            <div class="qad-status">
               <div class="qad-dot" id="qadDot"></div>
-              <div class="qad-info">
-                <strong id="qadStatusLabel">QAD Enterprise — Conectado</strong>
-                <span id="qadStatusDetail">Última sincronización: hace unos momentos</span>
+              <div style="flex:1">
+                <strong id="qadStatusLabel">Verificando...</strong>
+                <span style="font-size:12px;color:#7a8670;display:block" id="qadStatusDetail">Cargando estado</span>
               </div>
-              <button class="action-btn" onclick="testQAD()">Probar conexión</button>
+              <button class="action-btn" onclick="loadAdminStats()">Actualizar</button>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Users Tab -->
+      <!-- Users -->
       <div id="tabUsers" style="display:none">
         <div class="admin-section">
           <div class="admin-section-head">
-            <h3>Gestión de usuarios</h3>
-            <button class="action-btn" onclick="openAddUser()">+ Agregar usuario</button>
-            <button class="action-btn" style="background:#2563eb;color:#fff" onclick="migrateUsersToPostgres()">🔄 Guardar todos en BD</button>
+            <h3>Usuarios del sistema</h3>
+            <button class="action-btn" onclick="openAddUser()">+ Agregar</button>
           </div>
           <div class="admin-section-body" style="padding:0">
             <table class="users-table">
@@ -557,94 +385,28 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;background
         </div>
       </div>
 
-      <!-- QAD Tab -->
+      <!-- QAD -->
       <div id="tabQad" style="display:none">
         <div class="admin-section">
-          <div class="admin-section-head"><h3>📂 Subir archivos de QAD (Opción A — Cada hora)</h3></div>
+          <div class="admin-section-head"><h3>📂 Subir archivos QAD</h3></div>
           <div class="admin-section-body">
-            <p style="font-size:13px;color:#6a7060;margin-bottom:16px">Sube reportes exportados de QAD en Excel, CSV o PDF. AVIVA los leerá y responderá preguntas con esa información.</p>
-
-            <!-- Zona Excel/CSV -->
-            <div id="qadDropZone" style="border:2px dashed #6BBF3E;border-radius:12px;padding:28px;text-align:center;background:#f4faf0;cursor:pointer;transition:background 0.2s"
+            <p style="font-size:13px;color:#6a7060;margin-bottom:16px">Sube reportes exportados de QAD en Excel, CSV o PDF. AVIVA los leerá y responderá con esa información real.</p>
+            <div id="qadDropZone" style="border:2px dashed #6BBF3E;border-radius:12px;padding:28px;text-align:center;background:#f4faf0;cursor:pointer;"
               onclick="document.getElementById('adminFileInput').click()"
               ondragover="event.preventDefault();this.style.background='#e8f5df'"
               ondragleave="this.style.background='#f4faf0'"
               ondrop="event.preventDefault();this.style.background='#f4faf0';handleQADDrop(event)">
               <div style="font-size:32px;margin-bottom:8px">📊</div>
-              <div style="font-size:15px;font-weight:600;color:#1c2217;margin-bottom:4px">Arrastra archivos aquí o haz clic para seleccionar</div>
-              <div style="font-size:12px;color:#6a7060">Excel / CSV: .xlsx, .xls, .csv &nbsp;·&nbsp; PDF: .pdf &nbsp;·&nbsp; Múltiples archivos permitidos</div>
+              <div style="font-size:15px;font-weight:600;color:#1c2217;margin-bottom:4px">Arrastra archivos o haz clic para seleccionar</div>
+              <div style="font-size:12px;color:#6a7060">.xlsx · .xls · .csv · .pdf</div>
             </div>
-
-            <input type="file" id="adminFileInput" accept=".xlsx,.xls,.csv" multiple style="display:none" onchange="uploadQADFiles(this.files)">
-            <input type="file" id="adminPdfInput" accept=".pdf" multiple style="display:none" onchange="uploadQADPDFs(this.files)">
-
+            <input type="file" id="adminFileInput" accept=".xlsx,.xls,.csv,.pdf" multiple style="display:none" onchange="uploadQADFiles(Array.from(this.files))">
             <div id="qadUploadStatus" style="margin-top:12px;font-size:13px;min-height:20px"></div>
-
             <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
-              <button class="admin-save-btn" style="margin:0" onclick="document.getElementById('adminFileInput').click()">📂 Excel / CSV</button>
-              <button class="admin-save-btn" style="margin:0;background:#c0392b" onclick="document.getElementById('adminPdfInput').click()">📄 Subir PDF</button>
-              <button class="admin-save-btn" style="margin:0;background:#1c2217" onclick="clearQADData()">🗑️ Limpiar datos QAD</button>
-              <button class="admin-save-btn" style="margin:0;background:#2563eb" onclick="checkQADStatus()">🔄 Ver estado actual</button>
+              <button class="admin-save-btn" style="margin:0" onclick="document.getElementById('adminFileInput').click()">📂 Seleccionar archivos</button>
+              <button class="admin-save-btn" style="margin:0;background:#1c2217" onclick="clearQADData()">🗑️ Limpiar todos los datos</button>
+              <button class="admin-save-btn" style="margin:0;background:#2563eb" onclick="checkQADStatus()">🔄 Ver estado</button>
             </div>
-          </div>
-        </div>
-        <div class="admin-section">
-          <div class="admin-section-head"><h3>Configuración de API QAD</h3></div>
-          <div class="admin-section-body">
-            <div class="admin-form-grid">
-              <div class="admin-form-field">
-                <label>URL del servidor QAD</label>
-                <input type="text" id="qadUrl" placeholder="https://qad.vivatex.com/api">
-              </div>
-              <div class="admin-form-field">
-                <label>Puerto</label>
-                <input type="text" id="qadPort" placeholder="8080">
-              </div>
-              <div class="admin-form-field">
-                <label>API Key / Token</label>
-                <input type="password" id="qadToken" placeholder="••••••••••••••••">
-              </div>
-              <div class="admin-form-field">
-                <label>Empresa / Dominio QAD</label>
-                <input type="text" id="qadCompany" placeholder="VIVATEX">
-              </div>
-              <div class="admin-form-field">
-                <label>Usuario QAD</label>
-                <input type="text" id="qadUser" placeholder="api_user">
-              </div>
-              <div class="admin-form-field">
-                <label>Contraseña QAD</label>
-                <input type="password" id="qadPass" placeholder="••••••••">
-              </div>
-            </div>
-            <button class="admin-save-btn" onclick="saveQAD()">Guardar y probar conexión</button>
-          </div>
-        </div>
-        <div class="admin-section">
-          <div class="admin-section-head"><h3>Módulos QAD habilitados</h3></div>
-          <div class="admin-section-body">
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">
-              <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer"><input type="checkbox" checked> Ventas (SO)</label>
-              <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer"><input type="checkbox" checked> Inventario (IC)</label>
-              <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer"><input type="checkbox" checked> Compras (PO)</label>
-              <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer"><input type="checkbox" checked> Finanzas (GL)</label>
-              <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer"><input type="checkbox" checked> Clientes (AR)</label>
-              <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer"><input type="checkbox"> Producción (MFG)</label>
-            </div>
-            <button class="admin-save-btn" onclick="showToast('Módulos guardados','success')">Guardar módulos</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Logs Tab -->
-      <div id="tabLogs" style="display:none">
-        <div class="admin-section">
-          <div class="admin-section-head">
-            <h3>Registro de actividad</h3>
-            <button class="action-btn" onclick="clearLogs()">Limpiar logs</button>
-          </div>
-          <div class="admin-section-body" id="logsContainer">
-            <div style="color:#aab4a0;font-size:13px;text-align:center;padding:20px">Cargando logs…</div>
           </div>
         </div>
       </div>
@@ -652,25 +414,15 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;background
   </div>
 </div>
 
-<!-- Modal agregar/editar usuario -->
+<!-- Modal usuario -->
 <div class="modal-overlay" id="userModal">
   <div class="modal">
     <h3 id="modalTitle">Agregar usuario</h3>
     <div class="admin-form-grid">
-      <div class="admin-form-field">
-        <label>Usuario</label>
-        <input type="text" id="modalUser" placeholder="USUARIO123">
-      </div>
-      <div class="admin-form-field">
-        <label>Contraseña</label>
-        <input type="password" id="modalPass" placeholder="••••••••">
-      </div>
-      <div class="admin-form-field" style="grid-column:span 2">
-        <label>Rol</label>
-        <select id="modalRole">
-          <option value="user">Usuario — Solo chat</option>
-          <option value="admin">Sistemas — Chat + Panel admin</option>
-        </select>
+      <div class="admin-form-field"><label>Usuario</label><input type="text" id="modalUser" placeholder="USUARIO123"></div>
+      <div class="admin-form-field"><label>Contraseña</label><input type="password" id="modalPass" placeholder="••••••••"></div>
+      <div class="admin-form-field" style="grid-column:span 2"><label>Rol</label>
+        <select id="modalRole"><option value="user">Usuario</option><option value="admin">Administrador</option></select>
       </div>
     </div>
     <div class="modal-actions">
@@ -680,51 +432,128 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;background
   </div>
 </div>
 
-<!-- Toast -->
 <div class="toast" id="toast"></div>
 
 <script>
-// ===== DATA =====
-// Permisos por usuario
-const USER_PERMISSIONS = {
-  'JRZ123':          { type:'full', restrict:[] },
-  'JRR234':          { type:'full', restrict:[] },
-  'SRR456':          { type:'full', restrict:[] },
-  'SRB0707':         { type:'full', restrict:[] },
-  'SISTEMAS1900':    { type:'admin', restrict:[] },
-  'LEO2026':         { type:'no_contable', restrict:['contabilidad','activos','pasivos','balance general','estado de resultados','cuentas contables'] },
-  'ISMAEL_VENTAS':   { type:'ventas', restrict:[], allow:['ventas','produccion','pedidos','almacen','tela acabada','vendedores','bodega'] },
-  'GTE_ACABADO':     { type:'no_contable', restrict:['contabilidad','activos','pasivos','balance general','estado de resultados','cuentas contables'] },
-  'GTE_TEJIDO':      { type:'no_contable', restrict:['contabilidad','activos','pasivos','balance general','estado de resultados','cuentas contables'] },
-  'GTE_HILATURA':    { type:'no_contable', restrict:['contabilidad','activos','pasivos','balance general','estado de resultados','cuentas contables'] },
-  'MARTIN_CONTA':    { type:'full', restrict:[] },
-  'VENTAS_MONICA':   { type:'vendedor', restrict:[], vendedor:'Monica Caceres', allow:['ventas','pedidos','atrasos','clientes','bodega','almacen'] },
-  'VENTAS_EDGAR':    { type:'vendedor', restrict:[], vendedor:'Edgar Zarate', allow:['ventas','pedidos','atrasos','clientes','bodega','almacen'] },
-  'VENTAS_AMELIA':   { type:'vendedor', restrict:[], vendedor:'Amelia Aragon', allow:['ventas','pedidos','atrasos','clientes','bodega','almacen'] },
-  'COBRANZA_CLAUDIA':{ type:'full', restrict:[] },
-  'COBRANZA_OLIVIA': { type:'full', restrict:[] },
-  'ADMON_LUCY':      { type:'full', restrict:[] },
-};
-
-let USERS = [
-  {id:1, username:'JRZ123',      password:'JACOBOrz4646',      role:'user',  active:true},
-  {id:2, username:'JRR234',      password:'JACOBOrr8989',      role:'user',  active:true},
-  {id:3, username:'SRR456',      password:'SIMONrr0202',       role:'user',  active:true},
-  {id:4, username:'SRB0707',     password:'SALOrb0909',        role:'user',  active:true},
-  {id:5, username:'SISTEMAS1900',password:'SISTEMASviva2026',  role:'admin', active:true},
-  {id:6, username:'LEO2026',     password:'LEOg1986',          role:'user',  active:true},
-];
-
-let QAD_CONFIG = {url:'', port:'', token:'', company:'', user:'', pass:''};
+// ─── ESTADO GLOBAL ────────────────────────────────────────────────
 let currentUser = null;
-let conversations = {};  // { convId: { title, messages: [{role,content,time}] } }
+let conversations = {};
 let currentConvId = null;
-let allConversations = [];  // lista de todas las conversaciones del usuario
+let editingUserId = null;
 
-// Generar ID único para conversación
-function genConvId() { return 'conv_' + Date.now() + '_' + Math.random().toString(36).substr(2,6); }
+function genId() { return 'conv_' + Date.now() + '_' + Math.random().toString(36).substr(2,6); }
+function escHtml(t) { return String(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-// Guardar conversación actual en DB
+// ─── LOGIN ────────────────────────────────────────────────────────
+async function doLogin() {
+  const u = document.getElementById('loginUser').value.trim().toUpperCase();
+  const p = document.getElementById('loginPass').value.trim();
+  const err = document.getElementById('loginErr');
+  err.style.display = 'none';
+
+  if (!u || !p) { showErr('Ingresa usuario y contraseña'); return; }
+
+  try {
+    const res = await fetch('/api/login', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({username: u, password: p})
+    });
+    const data = await res.json();
+    if (data.ok) { loginSuccess(data.user); return; }
+    showErr(data.error || 'Usuario o contraseña incorrectos');
+  } catch(e) {
+    showErr('Error de conexión. Intenta de nuevo.');
+  }
+}
+
+function showErr(msg) {
+  const err = document.getElementById('loginErr');
+  err.textContent = msg;
+  err.style.display = 'block';
+  setTimeout(() => err.style.display = 'none', 4000);
+}
+
+function loginSuccess(user) {
+  currentUser = user;
+  conversations = {};
+  currentConvId = null;
+  document.getElementById('sidebarUser').textContent = user.username;
+  document.getElementById('sidebarRole').textContent = user.role === 'admin' ? 'Administrador' : 'Usuario';
+  if (user.role === 'admin') document.getElementById('navAdmin').style.display = 'flex';
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('appScreen').classList.add('active');
+  newChat();
+  loadUserConversations();
+}
+
+document.getElementById('loginBtn').addEventListener('click', doLogin);
+document.getElementById('loginPass').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+document.getElementById('loginUser').addEventListener('keydown', e => { if(e.key==='Enter') document.getElementById('loginPass').focus(); });
+
+function doLogout() {
+  currentUser = null;
+  document.getElementById('appScreen').classList.remove('active');
+  document.getElementById('loginScreen').style.display = 'flex';
+  document.getElementById('loginUser').value = '';
+  document.getElementById('loginPass').value = '';
+  document.getElementById('navAdmin').style.display = 'none';
+}
+
+// ─── NAVEGACIÓN ───────────────────────────────────────────────────
+function showChat() {
+  document.getElementById('chatArea').style.display = 'flex';
+  document.getElementById('adminPanel').classList.remove('active');
+  document.getElementById('navChat').classList.add('active');
+  document.getElementById('navAdmin').classList.remove('active');
+  closeSidebar();
+}
+
+async function showAdmin() {
+  if (!currentUser || currentUser.role !== 'admin') return;
+  document.getElementById('chatArea').style.display = 'none';
+  document.getElementById('adminPanel').classList.add('active');
+  document.getElementById('navChat').classList.remove('active');
+  document.getElementById('navAdmin').classList.add('active');
+  closeSidebar();
+  loadAdminStats();
+  loadUsersTable();
+}
+
+function adminTab(tab, btn) {
+  document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  ['Overview','Users','Qad'].forEach(t => document.getElementById('tab'+t).style.display = 'none');
+  document.getElementById('tab' + tab.charAt(0).toUpperCase() + tab.slice(1)).style.display = 'block';
+}
+
+function openSidebar() { document.getElementById('sidebar').classList.add('open'); document.getElementById('mobileOverlay').style.display = 'block'; }
+function closeSidebar() { document.getElementById('sidebar').classList.remove('open'); document.getElementById('mobileOverlay').style.display = 'none'; }
+
+// ─── CONVERSACIONES ───────────────────────────────────────────────
+function newChat() {
+  currentConvId = genId();
+  conversations[currentConvId] = { title: 'Nueva conversación', messages: [] };
+  renderWelcome();
+  renderHistory();
+  const input = document.getElementById('msgInput');
+  if (input) { input.value = ''; input.style.height = 'auto'; }
+  showChat();
+  setTimeout(() => { if(input) input.focus(); }, 100);
+}
+
+async function loadUserConversations() {
+  if (!currentUser) return;
+  try {
+    const res = await fetch('/api/conversations/' + currentUser.username);
+    const data = await res.json();
+    (data.conversations || []).forEach(c => {
+      conversations[c.conv_id] = { title: c.title, messages: c.messages || [] };
+    });
+    renderHistory();
+  } catch(e) {}
+}
+
 async function saveCurrentConv() {
   if (!currentUser || !currentConvId) return;
   const conv = conversations[currentConvId];
@@ -736,1237 +565,425 @@ async function saveCurrentConv() {
       body: JSON.stringify({
         username: currentUser.username,
         convId: currentConvId,
-        title: conv.title || conv.messages[0]?.content?.substring(0,60) || 'Conversación',
+        title: conv.title,
         messages: conv.messages
       })
     });
-  } catch(e) { console.warn('No se pudo guardar conversación:', e); }
+  } catch(e) {}
 }
 
-// Cargar todas las conversaciones del usuario desde DB
-async function loadUserConversations() {
-  if (!currentUser) return;
-  try {
-    const res = await fetch('/api/conversations/' + currentUser.username);
-    const data = await res.json();
-    allConversations = data.conversations || [];
-    // Cargar en memoria
-    allConversations.forEach(c => {
-      conversations[c.conv_id] = {
-        title: c.title,
-        messages: c.messages || [],
-        updatedAt: c.updated_at
-      };
-    });
-    renderHistory();
-  } catch(e) { console.warn('No se pudieron cargar conversaciones:', e); }
+function renderHistory() {
+  const list = document.getElementById('historyList');
+  const convs = Object.entries(conversations)
+    .filter(([,c]) => c.messages && c.messages.length > 0)
+    .reverse()
+    .slice(0, 8);
+
+  if (!convs.length) {
+    list.innerHTML = '<div style="font-size:12px;color:rgba(255,255,255,0.25);padding:6px 12px">Sin conversaciones aún</div>';
+    return;
+  }
+
+  list.innerHTML = convs.map(([id, c]) => `
+    <div class="history-item" onclick="loadConv('${id}')" title="${escHtml(c.title)}">
+      💬 ${escHtml((c.title||'Conversación').substring(0,36))}
+    </div>
+  `).join('');
 }
 
-// Cargar una conversación específica
-function loadConversation(convId) {
-  currentConvId = convId;
+function loadConv(id) {
+  currentConvId = id;
   renderMessages();
   showChat();
 }
 
-// Eliminar conversación
-async function deleteConversation(convId) {
-  if (!currentUser) return;
-  try {
-    await fetch('/api/conversations/' + currentUser.username + '/' + convId, {method:'DELETE'});
-    delete conversations[convId];
-    allConversations = allConversations.filter(c => c.conv_id !== convId);
-    if (currentConvId === convId) {
-      currentConvId = null;
-      startNewConversation();
-    }
-    renderHistory();
-    showToast('Conversación eliminada','success');
-  } catch(e) { showToast('Error al eliminar','error'); }
-}
-let activityLogs = [];
-let editingUserId = null;
-let queryCount = 0;
-
-// ===== CONVERSACIONES =====
-function startNewConversation(){
-  currentConvId = genConvId();
-  conversations[currentConvId] = { title: 'Nueva conversación', messages: [], updatedAt: new Date().toISOString() };
-  pendingFiles = [];
-  const wrap = document.getElementById('messagesWrap');
-  if(wrap) wrap.innerHTML = '';
-  const welcome = document.getElementById('welcomeScreen');
-  if(welcome) welcome.style.display = 'flex';
-  const input = document.getElementById('msgInput');
-  if(input) { input.value = ''; input.style.height = 'auto'; }
-  renderHistory();
-  showChat();
-  setTimeout(() => { if(input) input.focus(); }, 100);
-}
-
-async function newChat(){
-  await saveCurrentConv();
-  startNewConversation();
-}
-
-// ===== AUTH =====
-async function doLogin(){
-  var u = document.getElementById('loginUser').value.trim().toUpperCase();
-  var p = document.getElementById('loginPass').value.trim();
-  var err = document.getElementById('loginErr');
-
-  if(!u || !p){
-    err.textContent = 'Ingresa usuario y contraseña';
-    err.style.display = 'block';
-    setTimeout(function(){ err.style.display='none'; }, 3000);
-    return;
-  }
-
-  // Primero intentar contra PostgreSQL
-  try {
-    var res = await fetch('/api/login', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({username: u, password: p})
-    });
-    var data = await res.json();
-    if(data.ok){
-      loginSuccess(data.user);
-      return;
-    }
-  } catch(e){
-    console.warn('API login error:', e);
-  }
-
-  // Fallback: validar contra array local
-  var found = null;
-  for(var i=0; i<USERS.length; i++){
-    if(USERS[i].username.toUpperCase()===u && USERS[i].password===p && USERS[i].active){
-      found = USERS[i]; break;
-    }
-  }
-  if(found){
-    loginSuccess(found);
-    return;
-  }
-
-  err.textContent = 'Usuario o contraseña incorrectos';
-  err.style.display = 'block';
-  setTimeout(function(){ err.style.display='none'; }, 4000);
-}
-
-function loginSuccess(found){
-  currentUser = found;
-  currentConvId = null;
-  conversations = {};
-  pendingFiles = [];
-  try { logActivity('Inicio de sesión: ' + found.username); } catch(e){}
-  document.getElementById('sidebarUser').textContent = found.username;
-  document.getElementById('sidebarRole').textContent = found.role==='admin'?'Administrador de Sistemas':'Usuario';
-  if(found.role==='admin') document.getElementById('navAdmin').style.display='flex';
-  document.getElementById('loginScreen').style.display='none';
-  document.getElementById('appScreen').classList.add('active');
-  try { renderHistory(); } catch(e){}
-  try { showChat(); } catch(e){}
-  try { startNewConversation(); } catch(e){}
-  loadUserConversations().then(function(){ try { renderHistory(); } catch(e){} }).catch(function(){});
-}
-
-document.getElementById('loginBtn').addEventListener('click', function(e){ e.preventDefault(); doLogin(); });
-
-function doLogout(){
-  logActivity(`Cierre de sesión: ${currentUser?.username}`);
-  currentUser=null;
-  document.getElementById('appScreen').classList.remove('active');
-  document.getElementById('loginScreen').style.display='flex';
-  document.getElementById('loginUser').value='';
-  document.getElementById('loginPass').value='';
-  document.getElementById('navAdmin').style.display='none';
-}
-
-// ===== NAVIGATION =====
-function showChat(){
-  document.getElementById('chatArea').style.display='flex';
-  document.getElementById('adminPanel').classList.remove('active');
-  document.getElementById('navChat').classList.add('active');
-  document.getElementById('navAdmin').classList.remove('active');
-  closeSidebar();
-  renderMessages();
-}
-
-async function showAdmin(){
-  if(!currentUser || currentUser.role!=='admin') return;
-  document.getElementById('chatArea').style.display='none';
-  document.getElementById('adminPanel').classList.add('active');
-  document.getElementById('navChat').classList.remove('active');
-  document.getElementById('navAdmin').classList.add('active');
-  closeSidebar();
-  // Cargar usuarios desde PostgreSQL
-  try {
-    const res = await fetch('/api/usuarios');
-    const data = await res.json();
-    if(data.users && data.users.length > 0){
-      // Mergear con USERS local — PostgreSQL tiene prioridad
-      data.users.forEach(dbUser => {
-        const existing = USERS.find(u => u.username.toUpperCase() === dbUser.username.toUpperCase());
-        if(!existing){
-          USERS.push({id: dbUser.id+100, username: dbUser.username, password:'****', role: dbUser.role, active: dbUser.active});
-        } else {
-          existing.role = dbUser.role;
-          existing.active = dbUser.active;
-        }
-      });
-    }
-  } catch(e){ console.warn('No se pudo cargar usuarios de DB:', e); }
-  renderUsersTable();
-  renderLogs();
-  document.getElementById('statUsers').textContent = USERS.filter(u=>u.active).length;
-  document.getElementById('statQueries').textContent = queryCount;
-}
-
-function adminTab(tab, btn){
-  document.querySelectorAll('.nav-tab').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
-  ['Overview','Users','Qad','Logs'].forEach(t=>document.getElementById('tab'+t).style.display='none');
-  document.getElementById('tab'+tab.charAt(0).toUpperCase()+tab.slice(1)).style.display='block';
-  if(tab==='logs') renderLogs();
-}
-
-function openSidebar(){ document.getElementById('sidebar').classList.add('open'); document.getElementById('mobileOverlay').style.display='block'; }
-function closeSidebar(){ document.getElementById('sidebar').classList.remove('open'); document.getElementById('mobileOverlay').style.display='none'; }
-
-// ===== CHAT =====
-// newChat() está definida más abajo con lógica async completa
-
-function renderMessages(){
-  const msgs = currentConvId && conversations[currentConvId] ? conversations[currentConvId].messages : [];
-  const welcome = document.getElementById('welcomeScreen');
-  if(welcome) welcome.style.display = msgs.length > 0 ? 'none' : 'flex';
+// ─── RENDER MENSAJES ──────────────────────────────────────────────
+function renderWelcome() {
   const container = document.getElementById('chatMessages');
-  if(msgs.length===0){
-    container.innerHTML = `<div class="welcome-screen" id="welcomeScreen">
-      <div class="welcome-icon"><svg width="40" height="40" fill="none" viewBox="0 0 24 24" stroke="#4a9a20" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23-.693L5 14.5m14.8.8l1.402 1.402c1 1 .316 2.702-1.067 2.702H4.865c-1.383 0-2.067-1.702-1.067-2.702L5 14.5"/></svg></div>
-      <div class="welcome-title">Hola, soy <span style="color:var(--green)">AVIVA</span> 👋</div>
-      <div class="welcome-sub">Tu asistente inteligente conectado al sistema QAD de Vivatex. Puedo ayudarte con ventas, inventario, reportes y mucho más.</div>
+  container.innerHTML = `
+    <div class="welcome-screen">
+      <div class="welcome-icon">
+        <svg width="40" height="40" fill="none" viewBox="0 0 24 24" stroke="#4a9a20" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23-.693L5 14.5m14.8.8l1.402 1.402c1 1 .316 2.702-1.067 2.702H4.865c-1.383 0-2.067-1.702-1.067-2.702L5 14.5"/></svg>
+      </div>
+      <div class="welcome-title">Hola, soy <span>AVIVA</span> 👋</div>
+      <div class="welcome-sub">Tu asistente inteligente conectado al sistema QAD de Vivatex. Puedo ayudarte con ventas, cartera, inventario, reportes y mucho más.</div>
       <div class="welcome-chips">
-        <div class="chip" onclick="sendChip('¿Cuáles son las ventas del mes actual?')">📊 Ventas del mes</div>
+        <div class="chip" onclick="sendChip('Dame los clientes con mayor saldo en cartera')">📊 Cartera de clientes</div>
         <div class="chip" onclick="sendChip('Muéstrame el inventario disponible')">📦 Inventario</div>
-        <div class="chip" onclick="sendChip('Genera un reporte de clientes principales')">👥 Clientes</div>
-        <div class="chip" onclick="sendChip('¿Cuáles son las órdenes de compra pendientes?')">🧾 Órdenes pendientes</div>
+        <div class="chip" onclick="sendChip('Dame los clientes con pagos atrasados')">⚠️ Pagos atrasados</div>
+        <div class="chip" onclick="sendChip('Ventas por vendedor del mes')">👥 Ventas por vendedor</div>
         <div class="chip" onclick="sendChip('Dame el resumen financiero del mes')">💰 Resumen financiero</div>
-        <div class="chip" onclick="sendChip('¿Qué productos tienen baja existencia?')">⚠️ Stock bajo</div>
+        <div class="chip" onclick="sendChip('Órdenes de compra pendientes')">🧾 Órdenes pendientes</div>
       </div>
     </div>`;
-    return;
-  }
-  container.innerHTML = msgs.map(m=>`
+}
+
+function renderMessages() {
+  const conv = conversations[currentConvId];
+  if (!conv || !conv.messages.length) { renderWelcome(); return; }
+
+  const container = document.getElementById('chatMessages');
+  container.innerHTML = conv.messages.map(m => `
     <div class="msg ${m.role}">
-      <div class="msg-avatar">${m.role==='assistant'?'V':currentUser.username.substring(0,2)}</div>
+      <div class="msg-avatar">${m.role === 'assistant' ? 'V' : (currentUser?.username||'U').substring(0,2)}</div>
       <div>
-        <div class="msg-bubble">${m.role==='assistant'?formatMsg(m.content):escHtml(m.content)}</div>
-        <div class="msg-time">${m.time}</div>
+        <div class="msg-bubble">${m.role === 'assistant' ? formatMsg(m.content) : escHtml(m.content)}</div>
+        <div class="msg-time">${m.time||''}</div>
       </div>
     </div>
   `).join('');
   container.scrollTop = container.scrollHeight;
 }
 
-function renderHistory(){
-  const allMsgs = [];
-  Object.values(conversations).forEach(c => { if(c.messages) allMsgs.push(...c.messages); });
-  const msgs = currentConvId && conversations[currentConvId] ? conversations[currentConvId].messages : allMsgs;
-  const list = document.getElementById('historyList');
-  const userMsgs = msgs.filter(m=>m.role==='user');
-  if(userMsgs.length===0){ list.innerHTML='<div style="font-size:12px;color:rgba(255,255,255,0.25);padding:6px 12px">Sin conversaciones aún</div>'; return; }
-  list.innerHTML = userMsgs.slice(-5).reverse().map(m=>`
-    <div class="history-item" onclick="showChat()">${escHtml(m.content.substring(0,40))}${m.content.length>40?'…':''}</div>
-  `).join('');
-}
+// ─── FORMATEAR RESPUESTA DE AVIVA ─────────────────────────────────
+function formatMsg(text) {
+  if (!text) return '';
 
-function cleanASCIICharts(text) {
-  // 1. Eliminar bloques de codigo que contengan barras ASCII
-  const tripleBacktick = String.fromCharCode(96,96,96);
-  const reBlock = new RegExp(tripleBacktick + '[\\s\\S]*?' + tripleBacktick, 'g');
-  text = text.replace(reBlock, (block) => {
-    if (/[█▓░]/.test(block) || /[A-Z].{2,}\s+[█=\-|]{3,}/.test(block)) return '';
-    return block;
-  });
-
-  // 2. Eliminar línea por línea todo lo que parezca barra ASCII
-  const lines = text.split('\n');
-  const result = [];
-  let skipNext = 0;
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-
-    // Saltar líneas marcadas
-    if (skipNext > 0) { skipNext--; continue; }
-
-    // Detectar cualquier línea con caracteres de barra
-    if (/[█▓░]/.test(line)) { skipNext = 1; continue; }
-
-    // Detectar patrón: TEXTO [espacios] BARRAS [espacios] VALOR
-    if (/^.{2,40}\s{1,5}[█=\-|]{3,}/.test(line)) { skipNext = 1; continue; }
-
-    // Detectar líneas de escala: "0% 5% 10% 15% 20%"
-    if (/^\s*(\d+%\s+){2,}\d+%\s*$/.test(line)) continue;
-
-    // Detectar separadores de gráfica
-    if (/^[=\-─]{5,}$/.test(line.trim())) continue;
-
-    // Detectar líneas tipo eje: "|" al inicio
-    if (/^\s*[│|]/.test(line) && line.length > 3) continue;
-
-    result.push(line);
-  }
-
-  return result.join('\n').replace(/\n{3,}/g, '\n\n').trim();
-}
-// Contador global para IDs únicos de gráficas
-let chartIdCounter = 0;
-const chartInstances = {};
-
-function renderChart(chartData, containerId){
-  const c = document.getElementById(containerId);
-  if(!c) return;
-  const labels = chartData.labels || [];
-  const datasets = chartData.datasets || [];
-  const type = chartData.type || 'bar';
-  if(chartInstances[containerId]){ chartInstances[containerId].destroy(); }
-  const vivaColors = [
-    'rgba(107,191,62,0.85)','rgba(30,107,46,0.85)','rgba(74,154,32,0.85)',
-    'rgba(162,213,100,0.85)','rgba(20,80,30,0.85)','rgba(200,230,150,0.85)',
-    'rgba(50,140,60,0.85)','rgba(130,200,80,0.85)'
-  ];
-  const borderColors = vivaColors.map(c=>c.replace('0.85','1'));
-  const ds = datasets.map((d,i)=>({
-    label: d.label||'',
-    data: d.data||[],
-    backgroundColor: type==='line'? vivaColors[i%vivaColors.length] : labels.map((_,j)=>vivaColors[j%vivaColors.length]),
-    borderColor: type==='line'? borderColors[i%borderColors.length] : borderColors.map((_,j)=>borderColors[j%borderColors.length]),
-    borderWidth: type==='line'?2.5:1.5,
-    fill: type==='line'?false:undefined,
-    tension: 0.4,
-    borderRadius: type==='bar'?6:0,
-    pointRadius: type==='line'?5:undefined,
-    pointBackgroundColor: type==='line'?'#1E6B2E':undefined,
-  }));
-  chartInstances[containerId] = new Chart(c, {
-    type: type,
-    data: { labels, datasets: ds },
-    options: {
-      responsive:true, maintainAspectRatio:true,
-      plugins:{
-        legend:{ display: datasets.length>1, labels:{ font:{family:'Outfit',size:12}, color:'#2d4a20' } },
-        tooltip:{ callbacks:{ label: ctx => ` ${ctx.dataset.label||''}: ${typeof ctx.parsed.y==='number'?ctx.parsed.y.toLocaleString('es-MX'):ctx.parsed}` } }
-      },
-      scales: (type==='pie'||type==='doughnut') ? {} : {
-        x:{ ticks:{font:{family:'Outfit',size:11},color:'#4a6a3a'}, grid:{display:false} },
-        y:{ ticks:{font:{family:'Outfit',size:11},color:'#4a6a3a', callback:v=>typeof v==='number'?v.toLocaleString('es-MX'):v}, grid:{color:'rgba(107,191,62,0.1)'} }
-      }
-    }
-  });
-}
-
-function buildChartHTML(chartData, id){
-  const tipos = [
-    {k:'bar',label:'Barras'},
-    {k:'line',label:'Línea'},
-    {k:'pie',label:'Pastel'},
-    {k:'doughnut',label:'Dona'},
-    {k:'polarArea',label:'Polar'},
-    {k:'radar',label:'Radar'},
-  ];
-  const btns = tipos.map(t=>`<button class="chart-type-btn${t.k===chartData.type?' active':''}" onclick="switchChartType('${id}','${t.k}',this)">${t.label}</button>`).join('');
-  return `<div class="chart-container">
-    <div class="chart-title">${escHtml(chartData.title||'Gráfica')}</div>
-    <div class="chart-type-btns">${btns}</div>
-    <canvas id="${id}"></canvas>
-  </div>`;
-}
-
-function switchChartType(id, type, btn){
-  if(!chartInstances[id]) return;
-  const data = chartInstances[id].data;
-  chartInstances[id].destroy();
-  const btns = btn.closest('.chart-type-btns').querySelectorAll('.chart-type-btn');
-  btns.forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
-  const canvas = document.getElementById(id);
-  chartInstances[id] = new Chart(canvas, {
-    type: type,
-    data: data,
-    options: chartInstances[id]?.options || {}
-  });
-  // Re-render usando los datos guardados
-  const stored = window._chartDataStore && window._chartDataStore[id];
-  if(stored){ stored.type = type; renderChart(stored, id); }
-}
-
-window._chartDataStore = {};
-
-function formatMsg(text){
-  // Eliminar bloques de gráficas ASCII (barras de texto con █ ▓ ░ o guiones)
-  // Eliminar líneas que contengan múltiples █ o patrones de barra ASCII
-  text = text.replace(/^.*█+.*$/gm, '');
-  text = text.replace(/^.*▓+.*$/gm, '');
-  text = text.replace(/^.*░+.*$/gm, '');
-  // Eliminar líneas de escala como "0% 5% 10% 15% 20%"
-  text = text.replace(/^(\s*\d+%\s+){2,}.*$/gm, '');
-  // Eliminar líneas con patrón de barra: TEXTO ===+ o TEXTO ---+
-  text = text.replace(/^.{3,}\s[=─—]{4,}.*$/gm, '');
-  // Eliminar bloques de código que contengan gráficas ASCII (entre ```)
-  text = text.replace(/```[\s\S]*?```/g, (block) => {
-    if(block.includes('█') || block.includes('▓') || block.includes('░')) return '';
-    return block;
-  });
-  // Limpiar líneas vacías múltiples
-  text = text.replace(/\n{3,}/g, '\n\n');
-
-  // Si es JSON con estructura excel, extraer solo el texto
-  try {
-    const jsonMatch = text.match(/\{[\s\S]*"texto"\s*:[\s\S]*\}/);
-    if(jsonMatch){
-      const parsed = JSON.parse(jsonMatch[0]);
-      if(parsed.texto) text = parsed.texto;
-    }
-  } catch(e){}
-
-  // Detectar bloques %%CHART%% y reemplazar por canvas
-  text = text.replace(/%%CHART%%([\s\S]*?)%%CHART%%/g, (match, jsonStr) => {
-    try {
-      const chartData = JSON.parse(jsonStr.trim());
-      const id = 'chart_' + (++chartIdCounter);
-      window._chartDataStore[id] = chartData;
-      const html = buildChartHTML(chartData, id);
-      // Render después de que el DOM se actualice
-      setTimeout(()=>renderChart(chartData, id), 80);
-      return html;
-    } catch(e){ return ''; }
-  });
-
-  // Renderizar tablas markdown | col | col | + auto-generar gráfica
+  // Tablas Markdown → HTML con estilos
   text = text.replace(/\|(.+)\|\n\|[-| :]+\|\n((?:\|.+\|\n?)*)/g, (match, header, rows) => {
-    const headers = header.split('|').map(h=>h.trim()).filter(Boolean);
-    const headerHTML = '<tr>' + headers.map(h=>`<th>${escHtml(h)}</th>`).join('') + '</tr>';
+    const headers = header.split('|').map(h => h.trim()).filter(Boolean);
     const parsedRows = rows.trim().split('\n').map(row =>
-      row.split('|').map(c=>c.trim()).filter(Boolean)
+      row.split('|').map(c => c.trim()).filter(Boolean)
     );
-    const rowsHTML = parsedRows.map(cells =>
-      '<tr>' + cells.map(c=>`<td>${escHtml(c)}</td>`).join('') + '</tr>'
-    ).join('');
-    const tableHTML = `<div style="overflow-x:auto;margin:10px 0"><table>${headerHTML}${rowsHTML}</table></div>`;
-
-    // Auto-generar gráfica si hay al menos 2 columnas y 2+ filas con números
-    try {
-      // Función robusta para parsear números con comas, $, %
-      const parseNum = v => {
-        if(!v) return null;
-        const clean = String(v).replace(/[$\s]/g,'').replace(/,/g,'').replace(/%$/,'').trim();
-        const n = parseFloat(clean);
-        return isNaN(n) ? null : n;
-      };
-      const numColIdx = headers.findIndex((h,i) => i>0 && parsedRows.some(r => parseNum(r[i]) !== null));
-      // Encontrar columna de etiqueta (primera con valores de texto)
-      const labelColIdx = (() => {
-        for(let i=0; i<headers.length; i++){
-          const vals = parsedRows.map(r => r[i]||'');
-          const hasText = vals.some(v => parseNum(v) === null);
-          if(hasText) return i;
-        }
-        return 0;
-      })();
-
-      // Encontrar columnas numéricas (excluir la de etiqueta y columnas tipo ranking/posicion)
-      const numCols = headers.map((h,i) => {
-        if(i === labelColIdx) return null;
-        // Saltar columnas de ranking/posicion (solo contienen 1,2,3,4...)
-        const vals = parsedRows.map(r => parseNum(r[i]));
-        const realVals = vals.filter(v => v !== null);
-        if(realVals.length === 0) return null;
-        // Si todos los valores son enteros pequeños (1-20), probablemente es ranking
-        const isRanking = realVals.every(v => v === Math.floor(v) && v >= 1 && v <= 50) && realVals.length === parsedRows.length;
-        const maxVal = Math.max(...realVals);
-        // Si el max es muy pequeño comparado con otros, podría ser días/porcentaje
-        if(isRanking && maxVal <= 20) return null;
-        const hasNums = realVals.some(v => v !== 0);
-        return hasNums ? {label: h, data: vals.map(v => v || 0)} : null;
-      }).filter(Boolean);
-
-      if(numCols.length > 0 && parsedRows.length >= 2){
-        const labels = parsedRows.map(r => r[labelColIdx] || '');
-        // Tomar solo las primeras 2 columnas numéricas para no sobrecargar la gráfica
-        const chartCols = numCols.slice(0,2);
-
-        if(chartCols.length > 0){
-          const id = 'chart_' + (++chartIdCounter);
-          const chartData = {
-            title: headers[labelColIdx] + ' — ' + chartCols.map(c=>c.label).join(', '),
-            type: 'bar',
-            labels: labels,
-            datasets: chartCols
-          };
-          window._chartDataStore[id] = chartData;
-          setTimeout(()=>renderChart(chartData, id), 120);
-          return tableHTML + buildChartHTML(chartData, id);
-        }
-      }
-    } catch(e){}
-    return tableHTML;
+    return `<div style="overflow-x:auto;margin:12px 0">
+      <table>
+        <thead><tr>${headers.map(h => `<th>${escHtml(h)}</th>`).join('')}</tr></thead>
+        <tbody>${parsedRows.map(cells =>
+          `<tr>${cells.map(c => `<td>${escHtml(c)}</td>`).join('')}</tr>`
+        ).join('')}</tbody>
+      </table>
+    </div>`;
   });
 
-  // Encabezados ##
-  text = text.replace(/^### (.+)$/gm, '<h4 style="color:#1E6B2E;font-size:14px;margin:10px 0 4px;font-weight:700">$1</h4>');
-  text = text.replace(/^## (.+)$/gm, '<h3 style="color:#1E6B2E;font-size:15px;margin:12px 0 5px;font-weight:700">$1</h3>');
-  text = text.replace(/^# (.+)$/gm, '<h2 style="color:#1E6B2E;font-size:16px;margin:12px 0 6px;font-weight:700">$1</h2>');
+  // Encabezados
+  text = text.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  text = text.replace(/^### (.+)$/gm, '<h3>$1</h3>');
 
   // Negritas e itálicas
-  text = text.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
-  text = text.replace(/\*(.+?)\*/g,'<em>$1</em>');
+  text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  text = text.replace(/\*(.+?)\*/g, '<em>$1</em>');
 
-  // Listas con guiones o asteriscos
-  text = text.replace(/^[\-\*] (.+)$/gm, '<li style="margin:3px 0;padding-left:4px">$1</li>');
-  text = text.replace(/(<li[^>]*>.*<\/li>\n?)+/g, m => `<ul style="margin:8px 0;padding-left:20px">${m}</ul>`);
-
-  // Listas numeradas
-  text = text.replace(/^(\d+)\. (.+)$/gm, '<li style="margin:3px 0">$2</li>');
+  // Listas
+  text = text.replace(/^[-*] (.+)$/gm, '<li>$1</li>');
+  text = text.replace(/(<li>.*<\/li>\n?)+/g, m => `<ul>${m}</ul>`);
 
   // Código inline
-  text = text.replace(/`([^`]+)`/g, '<code style="background:#f0f7e8;padding:2px 6px;border-radius:4px;font-family:monospace;font-size:13px">$1</code>');
+  text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
 
-  // Párrafos
-  text = text.replace(/\n\n/g, '</p><p style="margin:6px 0">');
-  text = text.replace(/\n/g,'<br>');
-  text = '<p style="margin:0">' + text + '</p>';
+  // Saltos de línea y párrafos
+  text = text.replace(/\n\n/g, '</p><p>');
+  text = text.replace(/\n/g, '<br>');
+  text = '<p>' + text + '</p>';
+  text = text.replace(/<p><\/p>/g, '');
 
   return text;
 }
 
-function escHtml(t){ return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+// ─── ENVIAR MENSAJE ───────────────────────────────────────────────
+function sendChip(text) {
+  document.getElementById('msgInput').value = text;
+  sendMessage();
+}
 
-// Archivos subidos en la conversación actual (para análisis)
-let pendingFiles = [];
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+}
 
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+}
+
+async function sendMessage() {
+  const input = document.getElementById('msgInput');
+  const text = input.value.trim();
+  if (!text || !currentUser) return;
+
+  input.value = '';
+  input.style.height = 'auto';
+  document.getElementById('sendBtn').disabled = true;
+
+  const time = new Date().toLocaleTimeString('es-MX', {hour:'2-digit', minute:'2-digit'});
+
+  if (!currentConvId) newChat();
+  if (!conversations[currentConvId]) conversations[currentConvId] = { title: text.substring(0,60), messages: [] };
+
+  const conv = conversations[currentConvId];
+  conv.messages.push({ role: 'user', content: text, time });
+  if (conv.title === 'Nueva conversación') conv.title = text.substring(0, 60);
+
+  renderMessages();
+
+  // Mostrar typing
+  const container = document.getElementById('chatMessages');
+  const typingEl = document.createElement('div');
+  typingEl.className = 'msg assistant';
+  typingEl.id = 'typingMsg';
+  typingEl.innerHTML = `<div class="msg-avatar">V</div><div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>`;
+  container.appendChild(typingEl);
+  container.scrollTop = container.scrollHeight;
+
+  try {
+    // Preparar historial limpio para el server
+    const history = conv.messages
+      .filter(m => m.role === 'user' || m.role === 'assistant')
+      .slice(-10)
+      .map(m => ({ role: m.role, content: m.content }));
+
+    const response = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: history,
+        username: currentUser.username
+      })
+    });
+
+    const data = await response.json();
+    typingEl.remove();
+
+    const rTime = new Date().toLocaleTimeString('es-MX', {hour:'2-digit', minute:'2-digit'});
+    conv.messages.push({ role: 'assistant', content: data.reply || 'Sin respuesta.', time: rTime });
+    renderMessages();
+    renderHistory();
+    saveCurrentConv();
+
+  } catch(e) {
+    typingEl.remove();
+    const rTime = new Date().toLocaleTimeString('es-MX', {hour:'2-digit', minute:'2-digit'});
+    conv.messages.push({ role: 'assistant', content: 'Error de conexión. Intenta de nuevo.', time: rTime });
+    renderMessages();
+  }
+
+  document.getElementById('sendBtn').disabled = false;
+  document.getElementById('msgInput').focus();
+}
+
+// ─── ARCHIVOS ─────────────────────────────────────────────────────
 async function handleFileUpload(input) {
   const files = Array.from(input.files);
   if (!files.length) return;
-
-  for (const file of files) {
-    const ext = file.name.split('.').pop().toLowerCase();
-    const isQAD = ['xlsx','xls','csv'].includes(ext);
-    const isImage = ['png','jpg','jpeg','gif','webp'].includes(ext);
-    const isPDF = ext === 'pdf';
-
-    if (isQAD) {
-      // Subir a servidor para QAD
-      await uploadQADFiles([file]);
-    } else if (isImage || isPDF) {
-      // Leer como base64 para enviar a AVIVA
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const base64 = e.target.result;
-        pendingFiles.push({ name: file.name, type: file.type, base64, isImage, isPDF });
-        // Mostrar preview en el chat
-        if (isImage) {
-          const msg = `<div style="margin:4px 0"><img src="${base64}" style="max-width:220px;max-height:180px;border-radius:10px;display:block"/><span style="font-size:11px;opacity:0.6">${file.name}</span></div>`;
-          appendMsgHTML('user', msg);
-        } else {
-          appendMsg('user', `📄 ${file.name} (PDF adjunto)`);
-        }
-        showToast(`✅ ${file.name} listo — presiona enviar para que AVIVA lo analice`, 'success');
-      };
-      reader.readAsDataURL(file);
-    }
-  }
+  await uploadQADFiles(files);
   input.value = '';
 }
 
-// Maneja drop en la zona QAD — separa Excel/CSV de PDF
 async function handleQADDrop(event) {
   const files = Array.from(event.dataTransfer.files);
   if (!files.length) return;
-  const excelFiles = files.filter(f => /\.(xlsx|xls|csv)$/i.test(f.name));
-  const pdfFiles   = files.filter(f => /\.pdf$/i.test(f.name));
-  const otherFiles = files.filter(f => !/\.(xlsx|xls|csv|pdf)$/i.test(f.name));
-  if (otherFiles.length > 0) {
-    showToast('⚠️ Formato no permitido: ' + otherFiles.map(f=>f.name).join(', '), 'error');
-  }
-  if (excelFiles.length > 0) await uploadQADFiles(excelFiles);
-  if (pdfFiles.length > 0)   await uploadQADPDFs(pdfFiles);
+  await uploadQADFiles(files);
 }
 
 async function uploadQADFiles(files) {
-  const fileList = files instanceof FileList ? Array.from(files) : files;
-  const names = fileList.map(f=>f.name).join(', ');
+  if (!files || !files.length) return;
   showToast('⏳ Subiendo archivos QAD...', 'success');
-
-  const adminStatus = document.getElementById('qadUploadStatus');
-  if(adminStatus) adminStatus.innerHTML = `<span style="color:#6BBF3E">⏳ Subiendo: ${names}</span>`;
+  const statusEl = document.getElementById('qadUploadStatus');
+  if (statusEl) statusEl.innerHTML = '<span style="color:#6BBF3E">⏳ Subiendo...</span>';
 
   const formData = new FormData();
-  for (const f of fileList) formData.append('files', f);
+  for (const f of files) formData.append('files', f);
 
   try {
     const res = await fetch('/api/qad/upload', { method: 'POST', body: formData });
     const data = await res.json();
     if (data.ok) {
-      showToast(`✅ ${data.files} archivo(s) QAD cargados`, 'success');
-      if(adminStatus) adminStatus.innerHTML = `<span style="color:#6BBF3E">✅ ${data.files} archivo(s) · ${data.sheets} hojas · ${new Date().toLocaleTimeString('es-MX')}</span>`;
-      const chatArea = document.getElementById('chatArea');
-      if(chatArea && chatArea.style.display !== 'none') {
-        appendMsg('aviva', `✅ Datos QAD cargados: ${names}\n📊 ${data.sheets} hojas procesadas. Ya puedo responder con estos datos.`);
-      }
+      const msg = `✅ ${data.files} archivo(s) · ${data.sheets} hojas cargadas`;
+      showToast(msg, 'success');
+      if (statusEl) statusEl.innerHTML = `<span style="color:#6BBF3E">${msg}</span>`;
     } else {
-      const errMsg = data.error || 'Error desconocido';
-      showToast('❌ ' + errMsg, 'error');
-      if(adminStatus) adminStatus.innerHTML = `<span style="color:#e53e3e">❌ ${errMsg}</span>`;
+      showToast('❌ Error subiendo archivos', 'error');
     }
   } catch(e) {
-    showToast('❌ Error de conexión: ' + e.message, 'error');
-    if(adminStatus) adminStatus.innerHTML = `<span style="color:#e53e3e">❌ Error de conexión</span>`;
+    showToast('❌ Error de conexión', 'error');
   }
 }
 
-function appendMsgHTML(role, html) {
-  if(!currentConvId) { currentConvId = genConvId(); conversations[currentConvId]={title:'Nueva conversación',messages:[],updatedAt:new Date().toISOString()}; }
-  const wrap = document.getElementById('messagesWrap');
-  if(!wrap) return;
-  const div = document.createElement('div');
-  div.className = `msg msg-${role}`;
-  div.innerHTML = `<div class="msg-bubble">${html}</div>`;
-  wrap.appendChild(div);
-  wrap.scrollTop = wrap.scrollHeight;
-}
-
-async function clearQADData(){
+async function clearQADData() {
+  if (!confirm('¿Seguro que quieres eliminar todos los datos QAD?')) return;
   try {
-    await fetch('/api/qad/clear', {method:'DELETE'});
-    showToast('🗑️ Datos QAD eliminados','success');
+    await fetch('/api/qad/clear', { method: 'DELETE' });
+    showToast('🗑️ Datos QAD eliminados', 'success');
     const s = document.getElementById('qadUploadStatus');
-    if(s) s.innerHTML = '<span style="color:#6a7060">Sin datos cargados</span>';
-  } catch(e){ showToast('Error al limpiar','error'); }
+    if (s) s.innerHTML = '<span style="color:#6a7060">Sin datos cargados</span>';
+  } catch(e) { showToast('Error al limpiar', 'error'); }
 }
 
-async function checkQADStatus(){
+async function checkQADStatus() {
   try {
     const res = await fetch('/api/qad/status');
     const d = await res.json();
     const s = document.getElementById('qadUploadStatus');
-    if(d.hasData){
-      const msg = `✅ Datos disponibles · ${d.totalRecords} registros · ${d.sheets.length} hojas · Actualizado: ${d.lastUpdate ? new Date(d.lastUpdate).toLocaleString('es-MX') : 'N/A'}`;
-      if(s) s.innerHTML = `<span style="color:#6BBF3E">${msg}</span>`;
+    if (d.hasData) {
+      const msg = `✅ ${d.totalRecords} registros · ${d.sheets.length} hojas`;
+      if (s) s.innerHTML = `<span style="color:#6BBF3E">${msg}</span>`;
       showToast(msg, 'success');
     } else {
-      if(s) s.innerHTML = '<span style="color:#f59e0b">⚠️ Sin datos QAD cargados</span>';
-      showToast('Sin datos QAD cargados aún','error');
+      if (s) s.innerHTML = '<span style="color:#f59e0b">⚠️ Sin datos QAD cargados</span>';
+      showToast('Sin datos QAD cargados', 'error');
     }
-  } catch(e){ showToast('Error al verificar estado','error'); }
+  } catch(e) { showToast('Error verificando estado', 'error'); }
 }
 
-function autoResize(el){ el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,160)+'px'; }
-function handleKey(e){ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); sendMessage(); } }
-
-function sendChip(text){ document.getElementById('msgInput').value=text; sendMessage(); }
-
-async function sendMessage(){
-  const input = document.getElementById('msgInput');
-  const text = input.value.trim();
-  if(!text||!currentUser) return;
-  input.value=''; input.style.height='auto';
-  document.getElementById('sendBtn').disabled=true;
-
-  const time = new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
-  if(!currentConvId) { currentConvId = genConvId(); conversations[currentConvId]={title:text.substring(0,60),messages:[]}; }
-  if(!conversations[currentConvId]) conversations[currentConvId]={title:text.substring(0,60),messages:[]};
-  conversations[currentConvId].messages.push({role:'user',content:text,time});
-  if(!conversations[currentConvId].title || conversations[currentConvId].title==='Nueva conversación'){
-    conversations[currentConvId].title = text.substring(0,60);
-  }
-  renderMessages();
-  logActivity(`Consulta de ${currentUser.username}: ${text.substring(0,50)}`);
-  queryCount++;
-
-  // Show typing
-  const container = document.getElementById('chatMessages');
-  const typingEl = document.createElement('div');
-  typingEl.className='msg assistant'; typingEl.id='typingMsg';
-  typingEl.innerHTML=`<div class="msg-avatar">V</div><div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>`;
-  container.appendChild(typingEl);
-  container.scrollTop=container.scrollHeight;
-
-  try{
-    const history = (conversations[currentConvId]?.messages || []).slice(-10).map(m=>({role:m.role,content:m.content}));
-    const qadContext = buildQADContext();
-    const reply = await callAVIVA(history, qadContext);
-    typingEl.remove();
-    const rTime = new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
-    // Detectar si la respuesta tiene datos Excel con %%EXCEL%%
-    let displayReply = reply;
-    try {
-      const excelMatch = reply.match(/%%EXCEL%%([\s\S]*?)%%EXCEL%%/);
-      if(excelMatch){
-        const excelJson = JSON.parse(excelMatch[1]);
-        lastExcelData = excelJson;
-        displayReply = reply.replace(/%%EXCEL%%[\s\S]*?%%EXCEL%%/, '').trim();
-        setTimeout(() => showExcelReady(excelJson.titulo || 'Reporte'), 500);
-      }
-    } catch(e){}
-
-    // Limpiar cualquier JSON crudo que la IA haya generado sin marcadores
-    try {
-      // Detectar bloques JSON grandes con "hojas", "columnas", "filas" — son datos Excel crudos
-      displayReply = displayReply.replace(/\{[\s\S]*?"hojas"[\s\S]*?"columnas"[\s\S]*?\}/g, '');
-      displayReply = displayReply.replace(/\{[\s\S]*?"filas"[\s\S]*?"columnas"[\s\S]*?\}/g, '');
-      displayReply = displayReply.replace(/\{[\s\S]*?"titulo"[\s\S]*?"hojas"[\s\S]*?\}/g, '');
-      // Limpiar solo bloques JSON grandes, NUNCA tocar tablas markdown ni texto normal
-      // Solo eliminar si hay un bloque JSON completo con hojas/columnas/filas
-      displayReply = displayReply
-        .replace(/\{[^{}]*"hojas"[^{}]*\[[\s\S]*?\]\s*\}/g, '')
-        .replace(/\{[^{}]*"columnas"[\s\S]*?"filas"[\s\S]*?\}/g, '')
-        .replace(/\n{3,}/g, '\n\n').trim();
-    } catch(e){}
-
-    // Limpiar gráficas ASCII antes de guardar y mostrar
-    displayReply = cleanASCIICharts(displayReply);
-
-    conversations[currentConvId].messages.push({role:'assistant',content:displayReply,time:rTime});
-    conversations[currentConvId].updatedAt = new Date().toISOString();
-    renderMessages();
-    renderHistory();
-    speakText(displayReply);
-    saveCurrentConv();
-    // Detectar y guardar preferencias del usuario
-    detectAndSaveMemory(text, displayReply);
-  }catch(e){
-    typingEl.remove();
-    const errTime = new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
-    if(currentConvId && conversations[currentConvId]) conversations[currentConvId].messages.push({role:'assistant',content:'Lo siento, ocurrió un error al procesar tu consulta. Por favor intenta nuevamente.',time:errTime});
-    renderMessages();
-  }
-  document.getElementById('sendBtn').disabled=false;
-}
-
-function buildQADContext(){
-  const cfg = QAD_CONFIG;
-  if(!cfg.url) return 'El sistema QAD aún no está configurado. El administrador debe ingresar las credenciales en el Panel de Sistemas.';
-  return `Tienes acceso al sistema QAD de Vivatex (${cfg.company||'Grupo Vivatex'}). URL: ${cfg.url}. Cuando el usuario pregunte por datos, indícale que los datos provienen directamente del sistema QAD en tiempo real.`;
-}
-
-// Datos del último Excel generado por AVIVA
-let lastExcelData = null;
-
-async function callAVIVA(history, qadContext){
-  // Cargar memoria del usuario
-  const userMemory = localStorage.getItem('aviva_memory_' + currentUser.username);
-  const memoryContext = userMemory ? `\n\nMEMORIA DEL USUARIO (recuerda siempre esto):\n${userMemory}` : '';
-
-  const systemPrompt = `Eres AVIVA, la analista de inteligencia artificial de Grupo Vivatex S.A. de C.V.
-
-PERSONALIDAD:
-Hablas como una analista de negocios experta — inteligente, directa, humana y cercana. Tuteas al usuario. Usas lenguaje natural de negocios mexicano.
-
-Ejemplos de cómo hablas:
-- "Mira, lo que encontré en los datos es interesante..."
-- "Te lo pongo en perspectiva: el cliente X representa el 23% de tu cartera total"
-- "Aquí hay algo que deberías notar..."
-- "Con base en los datos, lo que está pasando es..."
-
-REGLAS ABSOLUTAS — NO NEGOCIABLES:
-1. NUNCA inventes nombres de clientes, empresas, productos, vendedores ni cantidades. Si no está en los datos, dilo claramente.
-2. SOLO usa datos que aparezcan literalmente en el contexto que recibes.
-3. NUNCA digas "necesito credenciales", "no tengo acceso" o similares si ya tienes datos en el contexto.
-4. Si no tienes el dato, di exactamente: "Ese dato no está disponible en la información que tengo. Verifica directamente en QAD."
-5. NUNCA hagas barras ASCII con █ ▓ ░ ni bloques de código con gráficas de texto.
-6. NUNCA uses JSON crudo, arrays [ ] ni objetos { } en tu respuesta visible.
-7. SIEMPRE muestra el listado COMPLETO de los registros solicitados — sin omitir ni resumir.
-8. Primero el DETALLE COMPLETO, luego el resumen.
-
-FORMATO DE RESPUESTAS:
-- Responde en español natural
-- Usa **negritas** para cifras y nombres importantes  
-- Usa encabezados ## y ### para organizar secciones
-- Cuando tengas datos tabulares (clientes, ventas, productos), preséntales en una TABLA MARKDOWN así:
-
-| Cliente | Saldo MXN | Crédito | Días |
-|---------|-----------|---------|------|
-| AURIMODA SA DE CV | $19,035,930 | $15,000,000 | 90 |
-| GRUPO DIABLESS | $5,840,786 | $10,000,000 | 120 |
-
-- Ordena de mayor a menor cuando sea relevante
-- Para cada registro incluye TODOS los datos disponibles
-
-SOBRE LOS DATOS QAD:
-- Si recibes datos en el contexto, ÚSALOS DIRECTAMENTE
-- Los datos tienen fecha de carga — menciónala cuando sea relevante
-- Si un cliente está en datos del 24 pero no del 25, NO asumas que pagó — indícalo como pendiente del día anterior
-
-CAPACIDADES:
-- Analizar ventas, cartera, producción, inventario, clientes, proveedores, cobranza
-- Generar reportes Excel profesionales descargables
-- Calcular totales, promedios, variaciones, rankings
-- Analizar imágenes y documentos adjuntos
-
-IDENTIDAD:
-- Eres AVIVA — Inteligencia Artificial de Vivatex
-- Nunca menciones Claude ni Anthropic
-- Trabajas exclusivamente para Grupo Vivatex S.A. de C.V.
-
-CUANDO EL USUARIO PIDA UN EXCEL O REPORTE DESCARGABLE:
-Responde primero con el análisis completo, luego al FINAL agrega exactamente esto (con los datos reales):
-%%EXCEL%%{
-  "titulo": "Nombre del reporte",
-  "subtitulo": "Descripción breve",
-  "periodo": "Mayo 2026",
-  "hojas": [
-    {
-      "nombre": "Nombre Hoja",
-      "columnas": ["Columna1","Columna2","Columna3"],
-      "filas": [["valor1",1234,0.95],["valor2",5678,0.87]],
-      "totales": ["TOTAL","6912",""],
-      "tipo_grafica": "bar"
-    }
-  ]
-}%%EXCEL%%
-
-Usuario actual: ${currentUser?.username || 'Usuario'}`;
-
-  const response = await fetch('/api/chat', {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({messages:history, system:systemPrompt, username: currentUser?.username || ''})
-  });
-  if(!response.ok) throw new Error('API error');
-  const data = await response.json();
-  const reply = data.reply;
-
-  // Intentar parsear si viene con datos Excel
+// ─── ADMIN ────────────────────────────────────────────────────────
+async function loadAdminStats() {
   try {
-    const jsonMatch = reply.match(/\{[\s\S]*\}/);
-    if(jsonMatch){
-      const parsed = JSON.parse(jsonMatch[0]);
-      if(parsed.excel && parsed.texto){
-        lastExcelData = parsed.excel;
-        // Mostrar botón de descarga Excel específico
-        showExcelReady(parsed.excel.titulo);
-        return parsed.texto;
-      }
-    }
-  } catch(e){}
+    const [usersRes, qadRes] = await Promise.all([
+      fetch('/api/usuarios'),
+      fetch('/api/qad/status')
+    ]);
+    const usersData = await usersRes.json();
+    const qadData = await qadRes.json();
 
-  lastExcelData = null;
-  return reply;
-}
+    document.getElementById('statUsers').textContent = (usersData.users||[]).filter(u=>u.active).length;
+    document.getElementById('statQAD').textContent = qadData.totalRecords ? qadData.totalRecords.toLocaleString('es-MX') : '0';
 
-function showExcelReady(titulo){
-  // Mostrar notificación con botón de descarga
-  const notif = document.createElement('div');
-  notif.style.cssText = 'position:fixed;bottom:90px;right:20px;background:#1a1f16;color:#6BBF3E;border:1.5px solid #6BBF3E;border-radius:12px;padding:12px 18px;font-size:13px;font-weight:600;cursor:pointer;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,0.3);display:flex;align-items:center;gap:10px;';
-  notif.innerHTML = `<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg> Descargar Excel: ${titulo}`;
-  notif.onclick = () => { downloadVivaExcel(); notif.remove(); };
-  document.body.appendChild(notif);
-  setTimeout(() => { if(notif.parentNode) notif.remove(); }, 15000);
-}
+    const dot = document.getElementById('qadDot');
+    const label = document.getElementById('qadStatusLabel');
+    const detail = document.getElementById('qadStatusDetail');
 
-// ===== EXPORT =====
-async function downloadVivaExcel(){
-  if(!lastExcelData){ showToast('No hay datos Excel generados aún','error'); return; }
-  showToast('⏳ Generando Excel profesional Vivatex...', 'success');
-  try {
-    const res = await fetch('/api/excel/generate', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({
-        titulo: lastExcelData.titulo || 'Reporte AVIVA',
-        subtitulo: lastExcelData.subtitulo || 'Reporte Ejecutivo',
-        periodo: lastExcelData.periodo || new Date().toLocaleDateString('es-MX',{year:'numeric',month:'long'}),
-        confidencial: 'Confidencial · Uso exclusivo Dirección General',
-        resumen: lastExcelData.resumen || null,
-        usuario: currentUser?.username || '',
-        hojas: lastExcelData.hojas
-      })
-    });
-    const data = await res.json();
-    if(data.ok && data.base64){
-      // Descargar el Excel
-      const bytes = atob(data.base64);
-      const arr = new Uint8Array(bytes.length);
-      for(let i=0; i<bytes.length; i++) arr[i] = bytes.charCodeAt(i);
-      const blob = new Blob([arr], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = data.filename;
-      a.click();
-      URL.revokeObjectURL(url);
-      showToast('✅ Excel profesional descargado', 'success');
+    if (qadData.hasData) {
+      dot.className = 'qad-dot';
+      label.textContent = `QAD Conectado — ${qadData.totalRecords.toLocaleString('es-MX')} registros`;
+      detail.textContent = `${qadData.sheets.length} hojas disponibles`;
     } else {
-      throw new Error(data.error || 'Error generando');
+      dot.className = 'qad-dot offline';
+      label.textContent = 'Sin datos QAD cargados';
+      detail.textContent = 'Sube archivos en la pestaña "Archivos QAD"';
     }
-  } catch(e) {
-    // Fallback a XLSX.js si falla el servidor
-    showToast('⚠️ Usando modo básico...', 'success');
-    const wb = XLSX.utils.book_new();
-    lastExcelData.hojas.forEach(hoja => {
-      const rows = [
-        ['GRUPO VIVATEX S.A. DE C.V.'],
-        [lastExcelData.titulo || 'Reporte'],
-        [],
-        hoja.columnas || [],
-        ...(hoja.filas || []),
-        ...(hoja.totales ? [[], hoja.totales] : [])
-      ];
-      const ws = XLSX.utils.aoa_to_sheet(rows);
-      ws['!cols'] = (hoja.columnas||[]).map(() => ({wch:20}));
-      XLSX.utils.book_append_sheet(wb, ws, (hoja.nombre||'Datos').substring(0,31));
-    });
-    const filename = `Vivatex_${new Date().toISOString().split('T')[0]}.xlsx`;
-    XLSX.writeFile(wb, filename);
-    showToast('✅ Excel descargado', 'success');
-  }
+  } catch(e) {}
 }
 
-function exportExcel(){
-  // Si hay datos dinámicos de AVIVA, descargar esos
-  if(lastExcelData){ downloadVivaExcel(); return; }
-  // Si no, exportar conversación
-  const allMsgs = [];
-  Object.values(conversations).forEach(c => { if(c.messages) allMsgs.push(...c.messages); });
-  const msgs = currentConvId && conversations[currentConvId] ? conversations[currentConvId].messages : allMsgs;
-  if(!msgs.length){ showToast('No hay datos para exportar','error'); return; }
-  const wb = XLSX.utils.book_new();
-  const rows = [
-    ['GRUPO VIVATEX S.A. DE C.V.','',''],
-    ['Conversación con AVIVA','',''],
-    ['Fecha:', new Date().toLocaleDateString('es-MX'),''],
-    ['Usuario:', currentUser.username,''],
-    ['','',''],
-    ['REMITENTE','MENSAJE','HORA'],
-    ...msgs.map(m=>[m.role==='user'?currentUser.username:'AVIVA',m.content,m.time])
-  ];
-  const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols']=[{wch:20},{wch:90},{wch:12}];
-  XLSX.utils.book_append_sheet(wb, ws, 'Conversación');
-  XLSX.writeFile(wb, `AVIVA_${currentUser.username}_${new Date().toISOString().split('T')[0]}.xlsx`);
-  showToast('✅ Excel exportado','success');
+async function loadUsersTable() {
+  try {
+    const res = await fetch('/api/usuarios');
+    const data = await res.json();
+    const tbody = document.getElementById('usersTableBody');
+    tbody.innerHTML = (data.users||[]).map(u => `
+      <tr>
+        <td><strong>${escHtml(u.username)}</strong></td>
+        <td><span class="badge ${u.role==='admin'?'badge-blue':'badge-gray'}">${u.role==='admin'?'Admin':'Usuario'}</span></td>
+        <td><span class="badge ${u.active?'badge-green':'badge-gray'}">${u.active?'Activo':'Inactivo'}</span></td>
+        <td>
+          <button class="action-btn" onclick="editUser(${u.id},'${escHtml(u.username)}','${u.role}')">Editar</button>
+          <button class="action-btn ${u.active?'danger':''}" onclick="toggleUser('${escHtml(u.username)}',${u.active})">${u.active?'Desactivar':'Activar'}</button>
+        </td>
+      </tr>
+    `).join('');
+    document.getElementById('statUsers').textContent = (data.users||[]).filter(u=>u.active).length;
+  } catch(e) {}
 }
 
-function exportPDF(){
-  const allMsgs = [];
-  Object.values(conversations).forEach(c => { if(c.messages) allMsgs.push(...c.messages); });
-  const msgs = currentConvId && conversations[currentConvId] ? conversations[currentConvId].messages : allMsgs;
-  if(!msgs.length){ showToast('No hay conversación para exportar','error'); return; }
-  const {jsPDF} = window.jspdf;
-  const doc = new jsPDF();
-  doc.setFontSize(18); doc.setTextColor(74,154,32);
-  doc.text('VIVA — Conversación Vivatex',14,20);
-  doc.setFontSize(10); doc.setTextColor(100);
-  doc.text(`Usuario: ${currentUser.username} | Fecha: ${new Date().toLocaleDateString('es-MX')}`,14,28);
-  doc.autoTable({
-    startY:34,
-    head:[['Rol','Mensaje','Hora']],
-    body: msgs.map(m=>[m.role==='user'?currentUser.username:'AVIVA',m.content.substring(0,200),m.time]),
-    headStyles:{fillColor:[74,154,32],textColor:255,fontSize:10},
-    bodyStyles:{fontSize:9,textColor:40},
-    alternateRowStyles:{fillColor:[244,250,240]},
-    styles:{cellPadding:4,overflow:'linebreak'},
-    columnStyles:{0:{cellWidth:30},2:{cellWidth:18}}
-  });
-  doc.save(`AVIVA_${currentUser.username}_${new Date().toISOString().split('T')[0]}.pdf`);
-  showToast('PDF exportado','success');
+function openAddUser() {
+  editingUserId = null;
+  document.getElementById('modalTitle').textContent = 'Agregar usuario';
+  document.getElementById('modalUser').value = '';
+  document.getElementById('modalPass').value = '';
+  document.getElementById('modalRole').value = 'user';
+  document.getElementById('userModal').classList.add('open');
 }
 
-// ===== ADMIN =====
-function renderUsersTable(){
-  const tbody = document.getElementById('usersTableBody');
-  tbody.innerHTML = USERS.map(u=>`
-    <tr>
-      <td><strong>${u.username}</strong></td>
-      <td><span class="badge ${u.role==='admin'?'badge-blue':'badge-gray'}">${u.role==='admin'?'Sistemas':'Usuario'}</span></td>
-      <td><span class="badge ${u.active?'badge-green':'badge-gray'}">${u.active?'Activo':'Inactivo'}</span></td>
-      <td>
-        <button class="action-btn" onclick="editUser(${u.id})">Editar</button>
-        <button class="action-btn ${u.active?'danger':''}" onclick="toggleUser(${u.id})">${u.active?'Desactivar':'Activar'}</button>
-      </td>
-    </tr>
-  `).join('');
+function editUser(id, username, role) {
+  editingUserId = id;
+  document.getElementById('modalTitle').textContent = 'Editar usuario';
+  document.getElementById('modalUser').value = username;
+  document.getElementById('modalPass').value = '';
+  document.getElementById('modalRole').value = role;
+  document.getElementById('userModal').classList.add('open');
 }
 
-async function uploadQADPDFs(files){
-  if(!files || files.length === 0) return;
-  const statusEl = document.getElementById('qadUploadStatus');
-  if(statusEl) statusEl.textContent = '⏳ Subiendo PDFs...';
-  for(const file of files){
-    const formData = new FormData();
-    formData.append('pdf', file);
-    try {
-      const res = await fetch('/api/qad/upload-pdf', {method:'POST', body: formData});
-      const data = await res.json();
-      if(data.ok) showToast(`✅ PDF "${file.name}" subido`, 'success');
-      else showToast(`❌ Error: ${data.error}`, 'error');
-    } catch(e){ showToast('Error subiendo PDF','error'); }
-  }
-  if(statusEl) statusEl.textContent = '✅ PDFs procesados';
-}
+function closeModal() { document.getElementById('userModal').classList.remove('open'); }
 
-async function migrateUsersToPostgres(){
-  showToast('⏳ Sincronizando usuarios...', 'success');
-  let ok = 0, fail = 0;
-  for(const u of USERS){
-    if(u.password === '****' || !u.password) continue; // skip usuarios sin contraseña conocida
-    try {
-      const res = await fetch('/api/usuarios', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({username: u.username, password: u.password, role: u.role})
-      });
-      const data = await res.json();
-      if(data.ok) ok++; else fail++;
-    } catch(e){ fail++; }
-  }
-  showToast(`✅ ${ok} usuarios sincronizados${fail>0?' | '+fail+' fallaron':''}`, 'success');
-}
-
-function openAddUser(){ editingUserId=null; document.getElementById('modalTitle').textContent='Agregar usuario'; document.getElementById('modalUser').value=''; document.getElementById('modalPass').value=''; document.getElementById('modalRole').value='user'; document.getElementById('userModal').classList.add('open'); }
-function editUser(id){ const u=USERS.find(x=>x.id===id); if(!u) return; editingUserId=id; document.getElementById('modalTitle').textContent='Editar usuario'; document.getElementById('modalUser').value=u.username; document.getElementById('modalPass').value=u.password==='****'?'':u.password; document.getElementById('modalPass').placeholder=u.password==='****'?'Ingresa nueva contraseña':'••••••••'; document.getElementById('modalRole').value=u.role; document.getElementById('userModal').classList.add('open'); }
-function closeModal(){ document.getElementById('userModal').classList.remove('open'); }
-
-async function saveUser(){
+async function saveUser() {
   const username = document.getElementById('modalUser').value.trim().toUpperCase();
   const password = document.getElementById('modalPass').value.trim();
   const role = document.getElementById('modalRole').value;
-  if(!username||!password){ showToast('Completa todos los campos','error'); return; }
+  if (!username || !password) { showToast('Completa todos los campos', 'error'); return; }
   try {
     const res = await fetch('/api/usuarios', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
       body: JSON.stringify({username, password, role})
     });
     const data = await res.json();
-    if(!data.ok){ showToast('Error guardando usuario','error'); return; }
-  } catch(e){ showToast('Error de conexión','error'); return; }
-
-  if(editingUserId){
-    const u=USERS.find(x=>x.id===editingUserId);
-    if(u){ u.username=username; u.password=password; u.role=role; }
-    showToast('Usuario actualizado','success');
-    logActivity(`Usuario modificado: ${username}`);
-  } else {
-    const newId=Math.max(...USERS.map(u=>u.id))+1;
-    USERS.push({id:newId,username,password,role,active:true});
-    showToast('Usuario creado','success');
-    logActivity(`Usuario creado: ${username}`);
-  }
-  closeModal(); renderUsersTable();
-  document.getElementById('statUsers').textContent=USERS.filter(u=>u.active).length;
-}
-
-async function toggleUser(id){
-  const u=USERS.find(x=>x.id===id);
-  if(!u) return;
-  if(u.username==='SISTEMAS1900'){ showToast('No puedes desactivar el usuario de sistemas','error'); return; }
-  u.active=!u.active;
-  try {
-    if(!u.active){
-      await fetch('/api/usuarios/'+u.username, {method:'DELETE'});
+    if (data.ok) {
+      showToast('Usuario guardado', 'success');
+      closeModal();
+      loadUsersTable();
     } else {
-      await fetch('/api/usuarios', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({username:u.username,password:u.password,role:u.role})});
+      showToast('Error: ' + (data.error||''), 'error');
     }
-  } catch(e){ console.warn('Error toggling user:', e); }
-  showToast(`Usuario ${u.active?'activado':'desactivado'}`,'success');
-  logActivity(`Usuario ${u.active?'activado':'desactivado'}: ${u.username}`);
-  renderUsersTable();
+  } catch(e) { showToast('Error de conexión', 'error'); }
 }
 
-function saveQAD(){
-  QAD_CONFIG = {
-    url:document.getElementById('qadUrl').value,
-    port:document.getElementById('qadPort').value,
-    token:document.getElementById('qadToken').value,
-    company:document.getElementById('qadCompany').value,
-    user:document.getElementById('qadUser').value,
-    pass:document.getElementById('qadPass').value,
-  };
-  showToast('Configuración QAD guardada. Probando conexión…','success');
-  logActivity('Configuración QAD actualizada');
-  setTimeout(testQAD, 1000);
-}
-
-function testQAD(){
-  showToast('Probando conexión con QAD…');
-  setTimeout(()=>{
-    const connected = !!QAD_CONFIG.url;
-    document.getElementById('qadDot').className='qad-dot'+(connected?'':' offline');
-    document.getElementById('qadStatusLabel').textContent = connected ? 'QAD Enterprise — Conectado' : 'QAD — Sin configurar';
-    document.getElementById('qadStatusDetail').textContent = connected ? 'Última sincronización: hace unos momentos' : 'Configura la URL y credenciales en la pestaña Conexión QAD';
-    document.getElementById('statQAD').textContent = connected ? 'Conectado' : 'Pendiente';
-    document.getElementById('statQAD').style.color = connected ? 'var(--green)' : '#f59e0b';
-    document.getElementById('qadStatusText').textContent = connected ? 'Conectado a QAD' : 'QAD no configurado';
-    showToast(connected ? 'Conexión QAD exitosa' : 'Configura las credenciales QAD', connected?'success':'error');
-  },1500);
-}
-
-function logActivity(msg){
-  activityLogs.unshift({msg, time: new Date().toLocaleString('es-MX')});
-  if(activityLogs.length>100) activityLogs=activityLogs.slice(0,100);
-}
-
-function renderLogs(){
-  const c = document.getElementById('logsContainer');
-  if(!activityLogs.length){ c.innerHTML='<div style="color:#aab4a0;font-size:13px;text-align:center;padding:20px">Sin actividad registrada</div>'; return; }
-  c.innerHTML = activityLogs.slice(0,30).map(l=>`
-    <div class="log-entry">
-      <div>
-        <div>${escHtml(l.msg)}</div>
-        <div class="log-time">${l.time}</div>
-      </div>
-    </div>
-  `).join('');
-}
-
-function clearLogs(){ activityLogs=[]; renderLogs(); showToast('Logs limpiados','success'); }
-
-// ===== TOAST =====
-function showToast(msg,type='success'){
-  const t=document.getElementById('toast');
-  t.textContent=msg; t.className=`toast ${type} show`;
-  setTimeout(()=>t.classList.remove('show'),3000);
-}
-
-// ===== PWA SERVICE WORKER =====
-if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('/sw.js').catch(()=>{});
-}
-
-// ============================================================
-// VOZ — Reconocimiento y síntesis de voz
-// ============================================================
-let recognition = null;
-let isListening = false;
-let synth = window.speechSynthesis;
-
-function toggleVoice(){
-  if(isListening){ stopListening(); return; }
-  startListening();
-}
-
-function startListening(){
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if(!SpeechRecognition){ showToast('Tu navegador no soporta reconocimiento de voz','error'); return; }
-  recognition = new SpeechRecognition();
-  recognition.lang = 'es-MX';
-  recognition.continuous = false;
-  recognition.interimResults = false;
-  recognition.onstart = () => {
-    isListening = true;
-    document.getElementById('micBtn').classList.add('mic-active');
-    showToast('🎤 Escuchando... habla ahora','success');
-  };
-  recognition.onresult = (e) => {
-    const text = e.results[0][0].transcript;
-    document.getElementById('msgInput').value = text;
-    stopListening();
-    sendMessage();
-  };
-  recognition.onerror = () => { stopListening(); showToast('Error al escuchar, intenta de nuevo','error'); };
-  recognition.onend = () => { stopListening(); };
-  recognition.start();
-}
-
-function stopListening(){
-  isListening = false;
-  document.getElementById('micBtn')?.classList.remove('mic-active');
-  if(recognition){ try{ recognition.stop(); }catch(e){} recognition = null; }
-}
-
-function detectAndSaveMemory(userMsg, avivReply) {
-  if (!currentUser) return;
-  const lower = userMsg.toLowerCase();
-  // Detectar preferencias de nombre/trato
-  const nameMatch = userMsg.match(/llámame\s+(\w+)|dime\s+(\w+)|soy\s+(\w+)|mi nombre es\s+(\w+)/i);
-  const treatMatch = userMsg.match(/trátame de\s+(\w+)|dime\s+(jefe|señor|doctor|licenciado|ingeniero|director|gerente)/i);
-  
-  if (nameMatch || treatMatch || lower.includes('recuerda que') || lower.includes('siempre') && lower.includes('dime')) {
-    const key = 'aviva_memory_' + currentUser.username;
-    const existing = localStorage.getItem(key) || '';
-    const timestamp = new Date().toLocaleDateString('es-MX');
-    let newMemory = existing;
-    
-    if (nameMatch) {
-      const name = nameMatch[1] || nameMatch[2] || nameMatch[3] || nameMatch[4];
-      newMemory += `\n- El usuario prefiere que lo llames "${name}" (desde ${timestamp})`;
+async function toggleUser(username, active) {
+  if (username === 'SISTEMAS1900') { showToast('No puedes desactivar este usuario', 'error'); return; }
+  try {
+    if (active) {
+      await fetch('/api/usuarios/' + username, { method: 'DELETE' });
+    } else {
+      // reactivar — necesita contraseña, mostrar modal
+      editUser(null, username, 'user');
+      return;
     }
-    if (treatMatch) {
-      const treat = treatMatch[1] || treatMatch[2];
-      newMemory += `\n- El usuario prefiere que lo trates como "${treat}" (desde ${timestamp})`;
-    }
-    if (lower.includes('recuerda que')) {
-      const idx = lower.indexOf('recuerda que') + 12;
-      const mem = userMsg.substring(idx, idx + 100).trim();
-      newMemory += `\n- Recuerda: ${mem} (desde ${timestamp})`;
-    }
-    
-    if (newMemory !== existing) {
-      localStorage.setItem(key, newMemory.trim());
-    }
-  }
+    showToast(`Usuario ${active?'desactivado':'activado'}`, 'success');
+    loadUsersTable();
+  } catch(e) { showToast('Error', 'error'); }
 }
 
-function speakText(text){
-  if(!synth) return;
-  synth.cancel();
-  // Limpiar markdown y limitar texto para voz más natural
-  const clean = text
-    .replace(/#{1,3} /g, '')           // quitar headers
-    .replace(/\*\*(.+?)\*\*/g, '$1')   // quitar negritas
-    .replace(/[*#_`|]/g, '')
-    .replace(/%%EXCEL%%[\s\S]*?%%EXCEL%%/g, '')
-    .replace(/[\n\r]+/g, '. ')
-    .replace(/\s+/g, ' ')
-    .replace(/\. \./g, '.')
-    .trim()
-    .substring(0, 500);               // máx 500 chars para no hablar demasiado
-  if(!clean.trim()) return;
-  
-  const utterance = new SpeechSynthesisUtterance(clean);
-  utterance.lang = 'es-MX';
-  utterance.rate = 0.88;    // Más lento = más humano
-  utterance.pitch = 1.05;   // Tono natural femenino
-  utterance.volume = 1.0;
-
-  // Buscar la mejor voz femenina en español
-  function setBestVoice() {
-    const voices = synth.getVoices();
-    // Prioridad: voces premium femeninas
-    const priorities = [
-      v => v.name.includes('Paulina'),           // macOS/iOS español México
-      v => v.name.includes('Monica'),            // macOS español España
-      v => v.name.includes('Mónica'),
-      v => v.name.includes('Luciana'),           // iOS español
-      v => v.name.includes('Valeria'),
-      v => v.name.includes('Laura'),
-      v => v.name.includes('Maria') || v.name.includes('María'),
-      v => v.name.includes('Google') && v.lang === 'es-MX',
-      v => v.name.includes('Google') && v.lang.startsWith('es'),
-      v => v.lang === 'es-MX' && !v.name.toLowerCase().includes('male'),
-      v => v.lang.startsWith('es-') && !v.name.toLowerCase().includes('male'),
-      v => v.lang.startsWith('es'),
-    ];
-    for (const test of priorities) {
-      const found = voices.find(test);
-      if (found) { utterance.voice = found; break; }
-    }
-  }
-
-  if (synth.getVoices().length > 0) {
-    setBestVoice();
-  } else {
-    synth.addEventListener('voiceschanged', setBestVoice, { once: true });
-  }
-  
-  synth.speak(utterance);
+// ─── EXPORTAR ─────────────────────────────────────────────────────
+function exportExcel() {
+  const conv = conversations[currentConvId];
+  if (!conv || !conv.messages.length) { showToast('No hay conversación para exportar', 'error'); return; }
+  const wb = XLSX.utils.book_new();
+  const rows = [
+    ['GRUPO VIVATEX S.A. DE C.V.'],
+    ['Conversación con AVIVA'],
+    ['Usuario:', currentUser.username],
+    ['Fecha:', new Date().toLocaleDateString('es-MX')],
+    [],
+    ['Rol', 'Mensaje', 'Hora'],
+    ...conv.messages.map(m => [m.role === 'user' ? currentUser.username : 'AVIVA', m.content, m.time||''])
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [{wch:20},{wch:90},{wch:12}];
+  XLSX.utils.book_append_sheet(wb, ws, 'Conversación');
+  XLSX.writeFile(wb, `AVIVA_${currentUser.username}_${new Date().toISOString().split('T')[0]}.xlsx`);
+  showToast('✅ Excel exportado', 'success');
 }
 
+function exportPDF() {
+  const conv = conversations[currentConvId];
+  if (!conv || !conv.messages.length) { showToast('No hay conversación para exportar', 'error'); return; }
+  const {jsPDF} = window.jspdf;
+  const doc = new jsPDF();
+  doc.setFontSize(16); doc.setTextColor(74,154,32);
+  doc.text('AVIVA — Conversación Vivatex', 14, 20);
+  doc.setFontSize(10); doc.setTextColor(100);
+  doc.text(`Usuario: ${currentUser.username} | Fecha: ${new Date().toLocaleDateString('es-MX')}`, 14, 28);
+  doc.autoTable({
+    startY: 34,
+    head: [['Rol','Mensaje','Hora']],
+    body: conv.messages.map(m => [m.role==='user'?currentUser.username:'AVIVA', (m.content||'').substring(0,200), m.time||'']),
+    headStyles: {fillColor:[74,154,32], textColor:255, fontSize:10},
+    bodyStyles: {fontSize:9, textColor:40},
+    alternateRowStyles: {fillColor:[244,250,240]},
+    columnStyles: {0:{cellWidth:30}, 2:{cellWidth:18}}
+  });
+  doc.save(`AVIVA_${currentUser.username}_${new Date().toISOString().split('T')[0]}.pdf`);
+  showToast('PDF exportado', 'success');
+}
+
+// ─── TOAST ────────────────────────────────────────────────────────
+function showToast(msg, type='success') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = `toast ${type} show`;
+  setTimeout(() => t.classList.remove('show'), 3500);
+}
+
+// ─── PWA ──────────────────────────────────────────────────────────
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(() => {});
+}
 </script>
 </body>
 </html>
