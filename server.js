@@ -88,116 +88,157 @@ async function tableExists(name) {
   return !!r.rows[0]?.exists;
 }
 
-async function loadQAD() {
-  const cache = {};
-  if (!pool) return cache;
-  if (await tableExists('qad_data')) {
-    const r = await pool.query('SELECT * FROM qad_data ORDER BY updated_at DESC');
-    for (const row of r.rows) {
-      cache[row.sheet_key || `qad_${row.id}`] = {
-        filename: row.filename || 'QAD', sheet: row.sheet_name || 'QAD',
-        updatedAt: row.updated_at, data: cleanPayload(row.data)
-      };
-    }
-  }
-  return cache;
-}
+// ─── BÚSQUEDA INTELIGENTE EN POSTGRESQL ───────────────────────────
+// Busca directamente en JSONB usando PostgreSQL — mucho más eficiente
+async function searchQADPostgres(userMessage, maxRows = 200) {
+  if (!pool) return { rows: [], total: 0, sources: [] };
 
-// Buscar registros relevantes según la pregunta del usuario
-function searchRelevant(cache, userMessage, maxRows = 150) {
   const msg = norm(userMessage);
-  const words = msg.split(' ').filter(w => w.length > 2);
   
-  const allRows = [];
-  Object.keys(cache).forEach(k => {
-    const c = cache[k];
-    if (!Array.isArray(c.data)) return;
-    c.data.forEach(row => {
-      allRows.push({ ...c, row, key: k });
-    });
-  });
+  // Detectar palabras clave importantes (ignorar palabras comunes)
+  const stopWords = new Set(['dame','reporte','tabla','de','del','la','el','los','las','un','una','en','que','tienes','por','para','con','me','mi','mis','tu','sus','hay','son','mas','top','cinco','diez','todos','todas','cuales','cual','como','cuando','donde']);
+  const keywords = msg.split(' ').filter(w => w.length > 2 && !stopWords.has(w));
 
-  if (!allRows.length) return { rows: [], total: 0 };
+  try {
+    // Obtener info de todas las hojas disponibles
+    const sheetsInfo = await pool.query('SELECT sheet_key, filename, sheet_name, updated_at, jsonb_array_length(data) as count FROM qad_data ORDER BY updated_at DESC');
+    
+    let totalRows = 0;
+    sheetsInfo.rows.forEach(s => { totalRows += parseInt(s.count) || 0; });
 
-  // Puntuar cada fila por relevancia
-  const scored = allRows.map(item => {
-    const text = norm(JSON.stringify(item.row));
-    let score = 0;
-    words.forEach(w => { if (text.includes(w)) score += 10; });
-    return { ...item, score };
-  });
+    const sources = sheetsInfo.rows.map(s => ({
+      key: s.sheet_key,
+      filename: s.filename,
+      sheet: s.sheet_name,
+      count: s.count,
+      updated: s.updated_at
+    }));
 
-  // Si hay palabras clave de negocio, filtrar por relevancia
-  const hasBusinessTerms = ['cliente','cartera','saldo','vendedor','venta','pedido','inventario','reporte','pago','factura','producto'].some(t => msg.includes(t));
-  
-  let filtered = scored;
-  if (hasBusinessTerms && words.length > 0) {
-    const relevant = scored.filter(i => i.score > 0).sort((a, b) => b.score - a.score);
-    filtered = relevant.length > 0 ? relevant : scored;
+    // Si no hay keywords específicas, traer muestra representativa de cada hoja
+    if (keywords.length === 0) {
+      let allRows = [];
+      for (const src of sources) {
+        const r = await pool.query(
+          `SELECT jsonb_array_elements(data) as row FROM qad_data WHERE sheet_key = $1 LIMIT 50`,
+          [src.key]
+        );
+        r.rows.forEach(row => allRows.push({ ...row.row, _source: src.filename + '/' + src.sheet }));
+      }
+      return { rows: allRows.slice(0, maxRows), total: totalRows, sources };
+    }
+
+    // Buscar con keywords en JSONB — búsqueda de texto completo
+    let allMatches = [];
+    
+    for (const src of sources) {
+      // Construir query de búsqueda JSONB
+      const searchConditions = keywords.map((_, i) => 
+        `lower(data_row::text) LIKE $${i + 2}`
+      ).join(' OR ');
+      
+      const query = `
+        SELECT data_row as row
+        FROM qad_data,
+        jsonb_array_elements(data) AS data_row
+        WHERE sheet_key = $1
+        AND (${searchConditions})
+        LIMIT $${keywords.length + 2}
+      `;
+      
+      const params = [src.key, ...keywords.map(k => `%${k}%`), Math.ceil(maxRows / sources.length) + 20];
+      
+      try {
+        const r = await pool.query(query, params);
+        r.rows.forEach(row => {
+          allMatches.push({ ...row.row, _source: src.filename + '/' + src.sheet });
+        });
+      } catch(e) {
+        // Si falla la búsqueda JSONB, traer muestra
+        const fallback = await pool.query(
+          `SELECT jsonb_array_elements(data) as row FROM qad_data WHERE sheet_key = $1 LIMIT 30`,
+          [src.key]
+        );
+        fallback.rows.forEach(row => {
+          allMatches.push({ ...row.row, _source: src.filename + '/' + src.sheet });
+        });
+      }
+    }
+
+    // Si no encontró nada con keywords, traer muestra general
+    if (allMatches.length === 0) {
+      for (const src of sources.slice(0, 3)) {
+        const r = await pool.query(
+          `SELECT jsonb_array_elements(data) as row FROM qad_data WHERE sheet_key = $1 LIMIT 60`,
+          [src.key]
+        );
+        r.rows.forEach(row => allMatches.push({ ...row.row, _source: src.filename + '/' + src.sheet }));
+      }
+    }
+
+    return { rows: allMatches.slice(0, maxRows), total: totalRows, sources };
+
+  } catch(e) {
+    console.error('Error búsqueda QAD:', e.message);
+    return { rows: [], total: 0, sources: [] };
   }
-
-  return {
-    rows: filtered.slice(0, maxRows).map(i => i.row),
-    total: allRows.length,
-    sources: [...new Set(filtered.slice(0, maxRows).map(i => `${i.filename}/${i.sheet}`))]
-  };
 }
 
 async function buildQADContext(userMessage = '') {
   try {
-    const cache = await loadQAD();
-    const keys = Object.keys(cache);
-    if (!keys.length) return { hasData: false, text: 'No hay datos QAD cargados. El administrador debe subir archivos Excel/CSV desde el Panel de Sistemas.' };
+    if (!pool) return { hasData: false, text: 'Sin conexión a base de datos.' };
 
-    // Contar total de registros
-    let totalRows = 0;
-    Object.values(cache).forEach(c => { totalRows += Array.isArray(c.data) ? c.data.length : 0; });
+    const exists = await tableExists('qad_data');
+    if (!exists) return { hasData: false, text: 'No hay datos QAD cargados.' };
 
-    // Buscar registros relevantes (máximo 150 filas para no exceder tokens)
-    const { rows, total, sources } = searchRelevant(cache, userMessage, 150);
-
-    // Construir resumen de fuentes disponibles
-    let contextText = `RESUMEN DE DATOS QAD:\n`;
-    contextText += `Total registros en sistema: ${totalRows}\n`;
-    contextText += `Registros enviados a análisis: ${rows.length}\n\n`;
-
-    // Agregar info de cada fuente
-    Object.keys(cache).forEach(k => {
-      const c = cache[k];
-      const count = Array.isArray(c.data) ? c.data.length : 0;
-      const fecha = c.updatedAt ? new Date(c.updatedAt).toLocaleString('es-MX') : 'N/A';
-      contextText += `Archivo: ${c.filename} | Hoja: ${c.sheet} | ${count} registros | Actualizado: ${fecha}\n`;
-    });
-
-    contextText += `\nDATOS RELEVANTES PARA LA CONSULTA:\n`;
-
-    if (rows.length > 0) {
-      // Agrupar por fuente para mejor presentación
-      const bySrc = {};
-      const allItems = [];
-      Object.keys(cache).forEach(k => {
-        const c = cache[k];
-        if (Array.isArray(c.data)) {
-          c.data.forEach(row => allItems.push({ src: `${c.filename}/${c.sheet}`, row }));
-        }
-      });
-
-      // Obtener columnas del primer registro
-      const cols = Object.keys(rows[0] || {});
-      contextText += cols.join(' | ') + '\n';
-      contextText += cols.map(() => '---').join(' | ') + '\n';
-      rows.forEach(row => {
-        contextText += cols.map(c => fmt(row[c])).join(' | ') + '\n';
-      });
-
-      if (total > rows.length) {
-        contextText += `\n(Mostrando ${rows.length} de ${total} registros totales. Si necesitas ver más, especifica mejor tu búsqueda.)`;
-      }
+    const countResult = await pool.query('SELECT COUNT(*) as total FROM qad_data');
+    if (parseInt(countResult.rows[0].total) === 0) {
+      return { hasData: false, text: 'No hay datos QAD cargados. El administrador debe subir archivos Excel/CSV desde el Panel de Sistemas.' };
     }
 
-    return { hasData: true, text: contextText, totalRows };
+    const { rows, total, sources } = await searchQADPostgres(userMessage, 200);
+
+    if (!rows.length) return { hasData: false, text: 'No encontré datos relacionados con tu consulta en QAD.' };
+
+    // Construir resumen de fuentes
+    let contextText = `DATOS QAD — ${total} registros totales en sistema\n`;
+    contextText += `Archivos disponibles:\n`;
+    sources.forEach(s => {
+      const fecha = s.updated ? new Date(s.updated).toLocaleString('es-MX') : 'N/A';
+      contextText += `  • ${s.filename} / ${s.sheet} — ${s.count} registros — Actualizado: ${fecha}\n`;
+    });
+    contextText += `\nRegistros relevantes para esta consulta (${rows.length} de ${total}):\n\n`;
+
+    // Agrupar por fuente para mejor presentación
+    const bySrc = {};
+    rows.forEach(row => {
+      const src = row._source || 'QAD';
+      if (!bySrc[src]) bySrc[src] = [];
+      const cleanRow = { ...row };
+      delete cleanRow._source;
+      bySrc[src].push(cleanRow);
+    });
+
+    Object.keys(bySrc).forEach(src => {
+      const srcRows = bySrc[src];
+      if (!srcRows.length) return;
+      contextText += `=== ${src} ===\n`;
+      const cols = Object.keys(srcRows[0]);
+      contextText += cols.join(' | ') + '\n';
+      contextText += cols.map(() => '---').join(' | ') + '\n';
+      srcRows.forEach(row => {
+        contextText += cols.map(c => fmt(row[c])).join(' | ') + '\n';
+      });
+      contextText += '\n';
+    });
+
+    if (total > rows.length) {
+      contextText += `\n⚠️ Mostrando ${rows.length} de ${total} registros totales. Para ver más, especifica el cliente, vendedor o período exacto.`;
+    }
+
+    return { hasData: true, text: contextText, total, shown: rows.length };
+
   } catch(e) {
-    console.error('Error cargando QAD:', e.message);
+    console.error('Error buildQADContext:', e.message);
     return { hasData: false, text: 'Error al cargar datos QAD: ' + e.message };
   }
 }
@@ -244,10 +285,12 @@ app.post('/api/qad/upload', upload.array('files', 20), async (req, res) => {
 });
 
 app.get('/api/qad/status', async (req, res) => {
-  const cache = await loadQAD();
-  let total = 0;
-  Object.values(cache).forEach(c => { total += Array.isArray(c.data) ? c.data.length : 0; });
-  res.json({ hasData: total > 0, totalRecords: total, sheets: Object.keys(cache) });
+  if (!pool) return res.json({ hasData: false, totalRecords: 0, sheets: [] });
+  try {
+    const r = await pool.query('SELECT sheet_key, filename, sheet_name, jsonb_array_length(data) as count FROM qad_data');
+    const total = r.rows.reduce((sum, row) => sum + (parseInt(row.count) || 0), 0);
+    res.json({ hasData: total > 0, totalRecords: total, sheets: r.rows.map(r => r.sheet_key) });
+  } catch(e) { res.json({ hasData: false, totalRecords: 0, sheets: [] }); }
 });
 
 app.delete('/api/qad/clear', async (req, res) => {
@@ -296,10 +339,7 @@ app.post('/api/chat', async (req, res) => {
   }
 
   try {
-    // Obtener último mensaje del usuario para búsqueda relevante
     const lastUserMsg = (messages || []).filter(m => m.role === 'user').slice(-1)[0]?.content || '';
-    
-    // Cargar solo datos relevantes
     const qadCtx = await buildQADContext(lastUserMsg);
 
     const systemPrompt = `Eres AVIVA, la analista de inteligencia artificial de Grupo Vivatex S.A. de C.V.
@@ -312,19 +352,22 @@ REGLAS ABSOLUTAS:
 3. Si el dato no está disponible di: "Ese dato no está en la información que tengo. Verifica directamente en QAD."
 4. NUNCA hagas gráficas ASCII con caracteres como █ ▓ ░
 5. NUNCA muestres JSON crudo en tu respuesta
-6. Muestra SIEMPRE el listado completo sin omitir registros
+6. Muestra SIEMPRE el listado COMPLETO de los registros que tienes — nunca omitas filas
+7. SIEMPRE responde con tablas Markdown cuando hay datos tabulares
 
-FORMATO DE RESPUESTAS:
-- Tablas Markdown para datos tabulares:
-  | Cliente | Saldo | Días |
-  |---------|-------|------|
-  | EMPRESA | $100  | 30   |
-- **Negritas** para cifras y nombres importantes
-- ## Encabezados para organizar secciones
-- Ordena de mayor a menor cuando sea relevante
-- Incluye totales al final de las tablas
+FORMATO OBLIGATORIO PARA DATOS:
+Cuando tengas datos de clientes, ventas, cartera, inventario, etc., SIEMPRE usa tabla Markdown:
 
-DATOS QAD:
+| Cliente | Saldo Total | Días Vencidos | Vendedor |
+|---------|-------------|---------------|---------|
+| EMPRESA SA DE CV | $1,234,567 | 90 | Juan Pérez |
+
+- Ordena de MAYOR a MENOR por saldo o importe
+- Incluye fila de TOTALES al final
+- Usa **negritas** para los valores más importantes
+- Usa ## para títulos de sección
+
+DATOS QAD DISPONIBLES AHORA:
 ${qadCtx.hasData ? qadCtx.text : qadCtx.text}
 
 Usuario: ${username || 'Usuario'}
