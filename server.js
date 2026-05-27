@@ -13,7 +13,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 const PORT = process.env.PORT || 3000;
 const DATABASE_URL = process.env.DATABASE_URL || '';
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
-const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-3-5-sonnet-20241022';
+const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5';
 
 let pool = null;
 
@@ -63,6 +63,10 @@ function fmt(v) {
   return String(v).replace(/\n/g, ' ').trim();
 }
 
+function norm(v) {
+  return String(v || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
 function cleanPayload(data) {
   if (!data) return [];
   if (Array.isArray(data)) return data;
@@ -99,34 +103,102 @@ async function loadQAD() {
   return cache;
 }
 
-async function buildQADContext() {
+// Buscar registros relevantes según la pregunta del usuario
+function searchRelevant(cache, userMessage, maxRows = 150) {
+  const msg = norm(userMessage);
+  const words = msg.split(' ').filter(w => w.length > 2);
+  
+  const allRows = [];
+  Object.keys(cache).forEach(k => {
+    const c = cache[k];
+    if (!Array.isArray(c.data)) return;
+    c.data.forEach(row => {
+      allRows.push({ ...c, row, key: k });
+    });
+  });
+
+  if (!allRows.length) return { rows: [], total: 0 };
+
+  // Puntuar cada fila por relevancia
+  const scored = allRows.map(item => {
+    const text = norm(JSON.stringify(item.row));
+    let score = 0;
+    words.forEach(w => { if (text.includes(w)) score += 10; });
+    return { ...item, score };
+  });
+
+  // Si hay palabras clave de negocio, filtrar por relevancia
+  const hasBusinessTerms = ['cliente','cartera','saldo','vendedor','venta','pedido','inventario','reporte','pago','factura','producto'].some(t => msg.includes(t));
+  
+  let filtered = scored;
+  if (hasBusinessTerms && words.length > 0) {
+    const relevant = scored.filter(i => i.score > 0).sort((a, b) => b.score - a.score);
+    filtered = relevant.length > 0 ? relevant : scored;
+  }
+
+  return {
+    rows: filtered.slice(0, maxRows).map(i => i.row),
+    total: allRows.length,
+    sources: [...new Set(filtered.slice(0, maxRows).map(i => `${i.filename}/${i.sheet}`))]
+  };
+}
+
+async function buildQADContext(userMessage = '') {
   try {
     const cache = await loadQAD();
     const keys = Object.keys(cache);
     if (!keys.length) return { hasData: false, text: 'No hay datos QAD cargados. El administrador debe subir archivos Excel/CSV desde el Panel de Sistemas.' };
 
+    // Contar total de registros
     let totalRows = 0;
-    let contextText = '';
+    Object.values(cache).forEach(c => { totalRows += Array.isArray(c.data) ? c.data.length : 0; });
 
-    for (const k of keys) {
+    // Buscar registros relevantes (máximo 150 filas para no exceder tokens)
+    const { rows, total, sources } = searchRelevant(cache, userMessage, 150);
+
+    // Construir resumen de fuentes disponibles
+    let contextText = `RESUMEN DE DATOS QAD:\n`;
+    contextText += `Total registros en sistema: ${totalRows}\n`;
+    contextText += `Registros enviados a análisis: ${rows.length}\n\n`;
+
+    // Agregar info de cada fuente
+    Object.keys(cache).forEach(k => {
       const c = cache[k];
-      const rows = Array.isArray(c.data) ? c.data : [];
-      totalRows += rows.length;
+      const count = Array.isArray(c.data) ? c.data.length : 0;
       const fecha = c.updatedAt ? new Date(c.updatedAt).toLocaleString('es-MX') : 'N/A';
-      contextText += `\n=== ${c.filename} / ${c.sheet} | ${rows.length} registros | ${fecha} ===\n`;
-      if (rows.length > 0) {
-        const cols = Object.keys(rows[0]);
-        contextText += cols.join(' | ') + '\n';
-        rows.slice(0, 300).forEach(row => {
-          contextText += cols.map(c => fmt(row[c])).join(' | ') + '\n';
-        });
-        if (rows.length > 300) contextText += `... y ${rows.length - 300} registros más.\n`;
+      contextText += `Archivo: ${c.filename} | Hoja: ${c.sheet} | ${count} registros | Actualizado: ${fecha}\n`;
+    });
+
+    contextText += `\nDATOS RELEVANTES PARA LA CONSULTA:\n`;
+
+    if (rows.length > 0) {
+      // Agrupar por fuente para mejor presentación
+      const bySrc = {};
+      const allItems = [];
+      Object.keys(cache).forEach(k => {
+        const c = cache[k];
+        if (Array.isArray(c.data)) {
+          c.data.forEach(row => allItems.push({ src: `${c.filename}/${c.sheet}`, row }));
+        }
+      });
+
+      // Obtener columnas del primer registro
+      const cols = Object.keys(rows[0] || {});
+      contextText += cols.join(' | ') + '\n';
+      contextText += cols.map(() => '---').join(' | ') + '\n';
+      rows.forEach(row => {
+        contextText += cols.map(c => fmt(row[c])).join(' | ') + '\n';
+      });
+
+      if (total > rows.length) {
+        contextText += `\n(Mostrando ${rows.length} de ${total} registros totales. Si necesitas ver más, especifica mejor tu búsqueda.)`;
       }
     }
+
     return { hasData: true, text: contextText, totalRows };
   } catch(e) {
     console.error('Error cargando QAD:', e.message);
-    return { hasData: false, text: 'Error al cargar datos QAD.' };
+    return { hasData: false, text: 'Error al cargar datos QAD: ' + e.message };
   }
 }
 
@@ -224,37 +296,44 @@ app.post('/api/chat', async (req, res) => {
   }
 
   try {
-    const qadCtx = await buildQADContext();
+    // Obtener último mensaje del usuario para búsqueda relevante
+    const lastUserMsg = (messages || []).filter(m => m.role === 'user').slice(-1)[0]?.content || '';
+    
+    // Cargar solo datos relevantes
+    const qadCtx = await buildQADContext(lastUserMsg);
 
     const systemPrompt = `Eres AVIVA, la analista de inteligencia artificial de Grupo Vivatex S.A. de C.V.
 
-IDENTIDAD: Tu nombre es AVIVA. Nunca menciones Claude, Anthropic ni OpenAI. Trabajas exclusivamente para Grupo Vivatex. Hablas español mexicano natural, tuteas al usuario.
+IDENTIDAD: Tu nombre es AVIVA. Nunca menciones Claude, Anthropic ni OpenAI. Trabajas exclusivamente para Grupo Vivatex. Hablas español mexicano natural, tuteas al usuario, eres directa y profesional.
 
 REGLAS ABSOLUTAS:
 1. NUNCA inventes clientes, vendedores, productos ni cantidades
 2. SOLO usa datos del contexto QAD que recibes
-3. Si el dato no está, di: "Ese dato no está disponible. Verifica en QAD."
+3. Si el dato no está disponible di: "Ese dato no está en la información que tengo. Verifica directamente en QAD."
 4. NUNCA hagas gráficas ASCII con caracteres como █ ▓ ░
 5. NUNCA muestres JSON crudo en tu respuesta
 6. Muestra SIEMPRE el listado completo sin omitir registros
 
-FORMATO:
-- Usa tablas Markdown para datos tabulares
-- Usa **negritas** para cifras importantes
-- Usa ## encabezados para organizar
+FORMATO DE RESPUESTAS:
+- Tablas Markdown para datos tabulares:
+  | Cliente | Saldo | Días |
+  |---------|-------|------|
+  | EMPRESA | $100  | 30   |
+- **Negritas** para cifras y nombres importantes
+- ## Encabezados para organizar secciones
 - Ordena de mayor a menor cuando sea relevante
-- Incluye totales al final
+- Incluye totales al final de las tablas
 
-DATOS QAD DISPONIBLES:
-${qadCtx.hasData ? `${qadCtx.totalRows} registros reales cargados:\n${qadCtx.text}` : qadCtx.text}
+DATOS QAD:
+${qadCtx.hasData ? qadCtx.text : qadCtx.text}
 
 Usuario: ${username || 'Usuario'}
 Fecha: ${new Date().toLocaleString('es-MX', { timeZone: 'America/Mexico_City' })}`;
 
     const cleanMessages = (messages || [])
       .filter(m => m.role === 'user' || m.role === 'assistant')
-      .slice(-10)
-      .map(m => ({ role: m.role, content: String(m.content || '').substring(0, 3000) }));
+      .slice(-6)
+      .map(m => ({ role: m.role, content: String(m.content || '').substring(0, 2000) }));
 
     if (!cleanMessages.length || cleanMessages[0].role !== 'user') {
       return res.json({ reply: 'Por favor escribe tu pregunta.' });
