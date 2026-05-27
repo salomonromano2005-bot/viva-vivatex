@@ -123,94 +123,297 @@ async function initDB() {
   }
 }
 
-app.get('/api/health', async (req, res) => {
-  res.json({
-    ok: true,
-    provider: AI_PROVIDER,
-    openai: !!OPENAI_API_KEY,
-    db: !!pool,
-    model: OPENAI_MODEL,
-    time: new Date().toISOString(),
-  });
-});
+function normalizeText(text) {
+  return String(text || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
-app.post('/api/login', async (req, res) => {
-  const { username, password } = req.body || {};
-  if (!username || !password) return res.status(400).json({ ok: false, error: 'Faltan datos' });
+function formatValue(value) {
+  if (value === null || value === undefined || value === '') return 'NO DISPONIBLE EN QAD';
 
-  try {
-    if (!pool) return res.status(500).json({ ok: false, error: 'Base de datos no disponible' });
+  if (typeof value === 'number') {
+    return Number.isInteger(value)
+      ? value.toLocaleString('es-MX')
+      : value.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
 
-    const result = await pool.query(
-      'SELECT id, username, role, active FROM usuarios WHERE UPPER(username)=$1 AND password=$2',
-      [String(username).trim().toUpperCase(), password]
-    );
+  return String(value).replace(/\n/g, ' ').replace(/\|/g, '/').trim();
+}
 
-    if (result.rows.length === 0) return res.json({ ok: false, error: 'Usuario o contraseña incorrectos' });
+function parseNumber(value) {
+  if (typeof value === 'number') return value;
+  const cleaned = String(value || '')
+    .replace(/[$,]/g, '')
+    .replace(/\s/g, '')
+    .replace(/[^\d.-]/g, '');
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : 0;
+}
 
-    const user = result.rows[0];
-    if (!user.active) return res.json({ ok: false, error: 'Usuario inactivo' });
+function rowsToTable(rows, maxRows = 50) {
+  if (!rows || rows.length === 0) return 'No hay registros disponibles.';
 
-    res.json({
-      ok: true,
-      user: {
-        id: user.id,
-        username: user.username,
-        role: user.role,
-        active: user.active,
-      },
+  const firstRow = rows.find(r => r && typeof r === 'object');
+  if (!firstRow) return 'No hay registros disponibles.';
+
+  const cols = Object.keys(firstRow);
+  if (cols.length === 0) return 'No hay columnas disponibles.';
+
+  const limited = rows.slice(0, maxRows);
+  const header = `| ${cols.join(' | ')} |`;
+  const separator = `| ${cols.map(() => '---').join(' | ')} |`;
+
+  const lines = limited.map(row =>
+    `| ${cols.map(col => formatValue(row[col])).join(' | ')} |`
+  );
+
+  return [header, separator, ...lines].join('\n');
+}
+
+function getImportantKeywords(text) {
+  const stopWords = new Set([
+    'que', 'como', 'cual', 'cuales', 'dame', 'dime', 'muestra', 'genera',
+    'generar', 'hacer', 'haz', 'para', 'por', 'con', 'sin', 'los', 'las',
+    'del', 'una', 'uno', 'este', 'esta', 'hay', 'tiene', 'pueden', 'quiero',
+    'necesito', 'favor', 'reporte', 'tabla', 'excel', 'pdf', 'info',
+    'informacion', 'datos', 'todo', 'todos', 'toda', 'todas', 'top',
+    'mayor', 'menor', 'mas', 'menos', 'archivo', 'archivos', 'qad',
+    'sobre', 'de', 'la', 'el', 'en', 'y', 'o', 'a', 'un', 'al', 'me',
+    'lo', 'explica', 'explicame', 'detalla', 'detalle', 'cliente',
+    'clientes', 'vendedor', 'vendedores'
+  ]);
+
+  return normalizeText(text)
+    .split(' ')
+    .map(w => w.trim())
+    .filter(w => w.length > 2 && !stopWords.has(w));
+}
+
+function getAllRowsFromCache(cache) {
+  const all = [];
+  Object.keys(cache || {}).forEach(key => {
+    const c = cache[key];
+    if (!c || !Array.isArray(c.data)) return;
+
+    c.data.forEach(row => {
+      if (!row || typeof row !== 'object') return;
+      all.push({
+        sourceKey: key,
+        filename: c.filename || '',
+        sheet: c.sheet || '',
+        updatedAt: c.updatedAt || '',
+        row,
+      });
     });
-  } catch (e) {
-    console.error('Error login:', e.message);
-    res.status(500).json({ ok: false, error: 'Error del servidor' });
-  }
-});
+  });
+  return all;
+}
 
-app.get('/api/usuarios', async (req, res) => {
-  try {
-    if (!pool) return res.json({ users: [] });
-    const result = await pool.query('SELECT id, username, role, active FROM usuarios ORDER BY id');
-    res.json({ users: result.rows });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
+function rowScore(row, keywords) {
+  const text = normalizeText(JSON.stringify(row));
+  let score = 0;
 
-app.post('/api/usuarios', async (req, res) => {
-  const { username, password, role } = req.body || {};
-  if (!username || !password) return res.status(400).json({ error: 'Faltan datos' });
-
-  try {
-    if (!pool) return res.status(500).json({ error: 'Sin DB' });
-
-    await pool.query(`
-      INSERT INTO usuarios (username, password, role, active)
-      VALUES ($1, $2, $3, true)
-      ON CONFLICT (username)
-      DO UPDATE SET password=$2, role=$3, active=true
-    `, [String(username).trim().toUpperCase(), password, role || 'user']);
-
-    res.json({ ok: true });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-app.delete('/api/usuarios/:username', async (req, res) => {
-  const username = String(req.params.username || '').trim().toUpperCase();
-
-  if (username === 'SISTEMAS1900') {
-    return res.status(400).json({ error: 'No puedes eliminar este usuario' });
+  for (const kw of keywords) {
+    if (text.includes(kw)) score += 50;
+    const words = text.split(' ');
+    if (words.some(w => w.startsWith(kw) || kw.startsWith(w))) score += 10;
   }
 
-  try {
-    if (!pool) return res.status(500).json({ error: 'Sin DB' });
-    await pool.query('UPDATE usuarios SET active=false WHERE UPPER(username)=$1', [username]);
-    res.json({ ok: true });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
+  return score;
+}
+
+function getBestNumericColumn(rows, preferredWords) {
+  const first = rows.find(r => r && typeof r === 'object');
+  if (!first) return null;
+
+  const cols = Object.keys(first);
+  const normalizedPreferred = preferredWords.map(normalizeText);
+
+  let best = null;
+  let bestScore = -1;
+
+  for (const col of cols) {
+    const ncol = normalizeText(col);
+    let score = 0;
+
+    for (const w of normalizedPreferred) {
+      if (ncol.includes(w)) score += 10;
+    }
+
+    const numericCount = rows.slice(0, 30).filter(r => Math.abs(parseNumber(r[col])) > 0).length;
+    score += numericCount;
+
+    if (score > bestScore) {
+      bestScore = score;
+      best = col;
+    }
   }
-});
+
+  return best;
+}
+
+function formatQADFilesTable(cache) {
+  const keys = Object.keys(cache || {});
+  if (keys.length === 0) return 'No tengo archivos QAD cargados actualmente.';
+
+  const rows = keys.map(k => {
+    const c = cache[k] || {};
+    const registros = Array.isArray(c.data) ? c.data.length : 0;
+    const fecha = c.updatedAt ? new Date(c.updatedAt).toLocaleString('es-MX') : '-';
+
+    let uso = 'Datos generales';
+    const name = normalizeText(`${c.filename || ''} ${c.sheet || ''}`);
+
+    if (name.includes('cliente') || name.includes('cxc') || name.includes('cartera') || name.includes('saldo')) uso = 'Clientes / cartera / saldos';
+    else if (name.includes('venta') || name.includes('factur')) uso = 'Ventas / facturación';
+    else if (name.includes('pedido') || name.includes('orden')) uso = 'Pedidos / órdenes';
+    else if (name.includes('inventario') || name.includes('almacen') || name.includes('stock')) uso = 'Inventario / almacén';
+    else if (name.includes('produccion') || name.includes('tejido') || name.includes('acabado') || name.includes('merma')) uso = 'Producción / mermas';
+    else if (name.includes('pdf')) uso = 'PDF procesado';
+
+    return {
+      Archivo: c.filename || '-',
+      Hoja: c.sheet || '-',
+      Registros: registros,
+      'Uso probable': uso,
+      'Última actualización': fecha,
+    };
+  });
+
+  return `## Archivos QAD cargados
+
+${rowsToTable(rows, 200)}
+
+Estos son los archivos disponibles en PostgreSQL para análisis.`;
+}
+
+function buildDeterministicQADReply(cache, message) {
+  const msgNorm = normalizeText(message);
+  const keywords = getImportantKeywords(message);
+  const allRows = getAllRowsFromCache(cache);
+
+  if (allRows.length === 0) {
+    return 'No tengo registros QAD cargados actualmente.';
+  }
+
+  const asksFiles =
+    msgNorm.includes('que archivos') ||
+    msgNorm.includes('archivos qad') ||
+    msgNorm.includes('que datos tienes') ||
+    msgNorm.includes('que tienes cargado') ||
+    msgNorm.includes('archivos cargados');
+
+  if (asksFiles) {
+    return formatQADFilesTable(cache);
+  }
+
+  const wantsClient =
+    msgNorm.includes('cliente') ||
+    msgNorm.includes('clientes') ||
+    msgNorm.includes('cartera') ||
+    msgNorm.includes('saldo') ||
+    msgNorm.includes('cxc') ||
+    msgNorm.includes('vencido');
+
+  const wantsVendor =
+    msgNorm.includes('vendedor') ||
+    msgNorm.includes('vendedores');
+
+  const wantsReport =
+    msgNorm.includes('reporte') ||
+    msgNorm.includes('tabla') ||
+    msgNorm.includes('detalle') ||
+    msgNorm.includes('detallado') ||
+    msgNorm.includes('informacion');
+
+  const wantsTop10 =
+    msgNorm.includes('top 10') ||
+    msgNorm.includes('top10') ||
+    msgNorm.includes('principales');
+
+  if (!wantsClient && !wantsVendor && !wantsReport) {
+    return null;
+  }
+
+  let matches = [];
+
+  if (keywords.length > 0) {
+    matches = allRows
+      .map(item => ({ ...item, score: rowScore(item.row, keywords) }))
+      .filter(item => item.score > 0)
+      .sort((a, b) => b.score - a.score);
+  }
+
+  if (matches.length === 0 && (wantsClient || wantsVendor || wantsReport)) {
+    matches = allRows
+      .filter(item => {
+        const source = normalizeText(`${item.filename} ${item.sheet} ${JSON.stringify(item.row)}`);
+        if (wantsClient) return source.includes('cliente') || source.includes('saldo') || source.includes('cartera') || source.includes('cxc');
+        if (wantsVendor) return source.includes('vendedor') || source.includes('ventas') || source.includes('factura');
+        return true;
+      })
+      .map(item => ({ ...item, score: 1 }));
+  }
+
+  if (matches.length === 0) {
+    return `## Resultado
+
+No encontré registros que coincidan directamente con tu consulta en QAD.
+
+## Archivos disponibles
+
+${formatQADFilesTable(cache)}`;
+  }
+
+  let rowsForReport = matches.map(m => m.row);
+
+  if (wantsTop10) {
+    const sortCol = getBestNumericColumn(rowsForReport, ['saldo', 'total', 'importe', 'venta', 'vencido', 'monto']);
+    if (sortCol) {
+      rowsForReport = [...rowsForReport].sort((a, b) => parseNumber(b[sortCol]) - parseNumber(a[sortCol])).slice(0, 10);
+    } else {
+      rowsForReport = rowsForReport.slice(0, 10);
+    }
+  } else {
+    rowsForReport = rowsForReport.slice(0, 50);
+  }
+
+  const sourceSummaryMap = {};
+  matches.forEach(m => {
+    const key = `${m.filename} / ${m.sheet}`;
+    sourceSummaryMap[key] = (sourceSummaryMap[key] || 0) + 1;
+  });
+
+  const sourcesTable = Object.keys(sourceSummaryMap).map(k => ({
+    Archivo: k,
+    Coincidencias: sourceSummaryMap[k],
+  }));
+
+  return `## Resumen ejecutivo
+
+Se encontraron **${matches.length} registros reales en QAD** relacionados con tu consulta.  
+La tabla de abajo se genera directamente desde PostgreSQL/QAD, sin inventar campos ni completar información manualmente.
+
+## Fuentes revisadas
+
+${rowsToTable(sourcesTable, 20)}
+
+## Tabla principal con datos QAD
+
+${rowsToTable(rowsForReport, wantsTop10 ? 10 : 50)}
+
+## Observaciones
+
+- Todos los datos mostrados vienen de QAD.
+- Si un campo aparece como **NO DISPONIBLE EN QAD**, significa que está vacío o no existe en el registro original.
+- No se inventaron vendedores, clientes, saldos, fechas ni importes.
+- Si necesitas más registros, pide: **"muéstrame más resultados"** o **"exporta esto a Excel"**.`;
+}
 
 async function saveQADToDB(key, filename, sheetName, data) {
   if (!pool) return;
@@ -556,7 +759,6 @@ app.post('/api/excel/generate', async (req, res) => {
     py.on('error', err => {
       console.error('Error iniciando Python:', err.message);
       const buffer = generateBasicExcelFallback(excelPayload);
-
       return res.json({
         ok: true,
         base64: buffer.toString('base64'),
@@ -571,7 +773,6 @@ app.post('/api/excel/generate', async (req, res) => {
         if (code !== 0) {
           console.error('Python Excel falló:', errOut);
           const buffer = generateBasicExcelFallback(excelPayload);
-
           return res.json({
             ok: true,
             base64: buffer.toString('base64'),
@@ -585,7 +786,6 @@ app.post('/api/excel/generate', async (req, res) => {
 
         if (!parsed.success) {
           const buffer = generateBasicExcelFallback(excelPayload);
-
           return res.json({
             ok: true,
             base64: buffer.toString('base64'),
@@ -597,9 +797,7 @@ app.post('/api/excel/generate', async (req, res) => {
 
         const fileBuffer = fs.readFileSync(tmpPath);
 
-        try {
-          fs.unlinkSync(tmpPath);
-        } catch {}
+        try { fs.unlinkSync(tmpPath); } catch {}
 
         return res.json({
           ok: true,
@@ -610,7 +808,6 @@ app.post('/api/excel/generate', async (req, res) => {
       } catch (e) {
         console.error('Error procesando Excel:', e.message);
         const buffer = generateBasicExcelFallback(excelPayload);
-
         return res.json({
           ok: true,
           base64: buffer.toString('base64'),
@@ -627,378 +824,11 @@ app.post('/api/excel/generate', async (req, res) => {
   }
 });
 
-function normalizeText(text) {
-  return String(text || '')
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function formatValue(value) {
-  if (value === null || value === undefined || value === '') return 'NO DISPONIBLE EN QAD';
-
-  if (typeof value === 'number') {
-    return Number.isInteger(value)
-      ? value.toLocaleString('es-MX')
-      : value.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  }
-
-  return String(value).replace(/\n/g, ' ').replace(/\|/g, '/').trim();
-}
-
-function rowsToTable(rows, maxRows = 80) {
-  if (!rows || rows.length === 0) return '(sin datos)';
-
-  const firstRow = rows.find(r => r && typeof r === 'object');
-  if (!firstRow) return '(sin datos)';
-
-  const cols = Object.keys(firstRow);
-  if (cols.length === 0) return '(sin datos)';
-
-  const limited = rows.slice(0, maxRows);
-
-  const header = `| ${cols.join(' | ')} |`;
-  const separator = `| ${cols.map(() => '---').join(' | ')} |`;
-
-  const lines = limited.map(row =>
-    `| ${cols.map(col => formatValue(row[col])).join(' | ')} |`
-  );
-
-  return [header, separator, ...lines].join('\n');
-}
-
-function getImportantKeywords(text) {
-  const stopWords = new Set([
-    'que', 'como', 'cual', 'cuales', 'dame', 'dime', 'muestra', 'genera',
-    'hacer', 'haz', 'para', 'por', 'con', 'sin', 'los', 'las', 'del',
-    'una', 'uno', 'este', 'esta', 'hay', 'tiene', 'pueden', 'quiero',
-    'necesito', 'favor', 'reporte', 'tabla', 'excel', 'pdf', 'info',
-    'informacion', 'datos', 'todo', 'todos', 'toda', 'todas', 'top',
-    'mayor', 'menor', 'mas', 'menos', 'archivo', 'archivos', 'qad',
-    'sobre', 'de', 'la', 'el', 'en', 'y', 'o', 'a', 'un', 'al', 'me',
-    'lo', 'explica', 'explicame', 'detalla', 'detalle'
-  ]);
-
-  return normalizeText(text)
-    .split(' ')
-    .map(w => w.trim())
-    .filter(w => w.length > 2 && !stopWords.has(w));
-}
-
-function formatQADFilesTable(cache) {
-  const keys = Object.keys(cache || {});
-
-  if (keys.length === 0) {
-    return 'No tengo archivos QAD cargados actualmente.';
-  }
-
-  const rows = keys.map(k => {
-    const c = cache[k] || {};
-    const registros = Array.isArray(c.data) ? c.data.length : 0;
-    const fecha = c.updatedAt ? new Date(c.updatedAt).toLocaleString('es-MX') : '-';
-
-    let uso = 'Datos generales';
-    const name = normalizeText(`${c.filename || ''} ${c.sheet || ''}`);
-
-    if (name.includes('cliente') || name.includes('cxc') || name.includes('cartera') || name.includes('saldo')) uso = 'Clientes / cartera / saldos';
-    else if (name.includes('venta') || name.includes('factur')) uso = 'Ventas / facturación';
-    else if (name.includes('pedido') || name.includes('orden')) uso = 'Pedidos / órdenes';
-    else if (name.includes('inventario') || name.includes('almacen') || name.includes('stock')) uso = 'Inventario / almacén';
-    else if (name.includes('produccion') || name.includes('tejido') || name.includes('acabado') || name.includes('merma')) uso = 'Producción / mermas';
-    else if (name.includes('pdf')) uso = 'PDF procesado';
-
-    return `| ${c.filename || '-'} | ${c.sheet || '-'} | ${registros} | ${uso} | ${fecha} |`;
-  }).join('\n');
-
-  return `## Archivos QAD cargados
-
-| Archivo | Hoja | Registros | Uso probable | Última actualización |
-|---|---|---:|---|---|
-${rows}
-
-Estos son los archivos disponibles en PostgreSQL para análisis. Puedes pedirme reportes por clientes, cartera, saldos, ventas, inventario, pedidos, producción o proveedores.`;
-}
-
-function buildQADContext(cache, messages) {
-  const keys = Object.keys(cache || {});
-  if (keys.length === 0) return '';
-
-  const lastMsg = messages[messages.length - 1]?.content || '';
-  const lastMsgNorm = normalizeText(lastMsg);
-  const keywords = getImportantKeywords(lastMsg);
-
-  console.log('🔎 Keywords detectadas:', keywords);
-
-  const categories = {
-    cliente: ['cliente', 'clientes', 'cartera', 'cobrar', 'saldo', 'credito', 'deuda', 'vencido', 'antiguedad', 'cxc', 'cobranza'],
-    venta: ['venta', 'ventas', 'factura', 'facturacion', 'ingreso', 'factur'],
-    vendedor: ['vendedor', 'vendedores'],
-    pedido: ['pedido', 'pedidos', 'orden', 'ordenes'],
-    proveedor: ['proveedor', 'proveedores', 'cxp'],
-    produccion: ['produccion', 'hilatura', 'tejido', 'acabado', 'merma'],
-    inventario: ['inventario', 'stock', 'almacen', 'tela', 'producto', 'especif'],
-  };
-
-  const msgCats = new Set();
-
-  Object.entries(categories).forEach(([cat, words]) => {
-    if (words.some(w => lastMsgNorm.includes(w))) msgCats.add(cat);
-  });
-
-  const includeAll = msgCats.size === 0;
-  const sheetIndex = keys.map(k => {
-    const c = cache[k];
-    return `- ${c.filename} / Hoja: ${c.sheet}: ${Array.isArray(c.data) ? c.data.length : '?'} registros`;
-  }).join('\n');
-
-  const results = [];
-
-  for (const key of keys) {
-    const c = cache[key];
-    if (!c || !Array.isArray(c.data) || c.data.length === 0) continue;
-
-    const rows = c.data;
-    const schema = Object.keys(rows.find(r => r && typeof r === 'object') || {}).join(' ');
-    const fileNorm = normalizeText(`${c.filename} ${c.sheet} ${key} ${schema}`);
-
-    const fileCats = new Set();
-
-    Object.entries(categories).forEach(([cat, words]) => {
-      if (words.some(w => fileNorm.includes(w))) fileCats.add(cat);
-    });
-
-    const catMatch = includeAll || [...msgCats].some(cat => fileCats.has(cat));
-
-    const matchedRows = [];
-
-    for (const row of rows) {
-      const rowText = normalizeText(JSON.stringify(row));
-      let score = 0;
-
-      for (const kw of keywords) {
-        if (rowText.includes(kw)) score += 40;
-        if (fileNorm.includes(kw)) score += 10;
-
-        const words = rowText.split(' ');
-        if (words.some(w => w.startsWith(kw) || kw.startsWith(w))) score += 8;
-      }
-
-      if (catMatch) score += 5;
-
-      if (score > 0) matchedRows.push({ row, score });
-    }
-
-    matchedRows.sort((a, b) => b.score - a.score);
-
-    let rowsToInclude = [];
-
-    if (keywords.length > 0) {
-      rowsToInclude = matchedRows.slice(0, 80).map(r => r.row);
-    } else if (catMatch) {
-      rowsToInclude = rows.slice(0, 80);
-    }
-
-    if (rowsToInclude.length > 0) {
-      results.push({
-        key,
-        score: matchedRows.reduce((s, r) => s + r.score, 0) + (catMatch ? 1000 : 0),
-        text: `
-### ARCHIVO: ${c.filename}
-### HOJA: ${c.sheet}
-### COLUMNAS DISPONIBLES EN QAD:
-${Object.keys(rowsToInclude[0] || {}).join(', ')}
-
-### TOTAL REGISTROS EN ARCHIVO: ${rows.length}
-### REGISTROS ENVIADOS A AVIVA: ${rowsToInclude.length}
-### COINCIDENCIAS DIRECTAS: ${matchedRows.length}
-
-${rowsToTable(rowsToInclude, 80)}
-`
-      });
-    }
-  }
-
-  results.sort((a, b) => b.score - a.score);
-
-  const MAX_CHARS = 45000;
-  let totalChars = 0;
-  const selected = [];
-  let selectedCount = 0;
-
-  for (const r of results) {
-    if (selectedCount >= 6) break;
-
-    const trimmedText = r.text.substring(0, 8000);
-
-    if (totalChars + trimmedText.length > MAX_CHARS) break;
-
-    selected.push(trimmedText);
-    totalChars += trimmedText.length;
-    selectedCount++;
-  }
-
-  if (selected.length === 0) {
-    const samples = keys.slice(0, 5).map(k => {
-      const c = cache[k];
-
-      return `
-### ARCHIVO: ${c.filename}
-### HOJA: ${c.sheet}
-### TOTAL REGISTROS: ${c.data.length}
-
-${rowsToTable((c.data || []).slice(0, 15), 15)}
-`;
-    }).join('\n');
-
-    return `
-===== DATOS QAD =====
-
-ARCHIVOS DISPONIBLES:
-${sheetIndex}
-
-No hubo coincidencias exactas con la pregunta. Aquí hay una muestra de datos disponibles:
-
-${samples}
-`;
-  }
-
-  return `
-===== DATOS QAD DISPONIBLES =====
-
-ARCHIVOS DISPONIBLES:
-${sheetIndex}
-
-===== DATOS REALES EXTRAÍDOS DE QAD PARA ESTA CONSULTA =====
-
-${selected.join('\n')}
-
-===== REGLAS ESPECIALES SOBRE LOS DATOS =====
-
-- La tabla anterior es la fuente de verdad.
-- Usa únicamente campos, nombres, vendedores, clientes, importes, fechas y códigos que aparezcan en la tabla QAD.
-- Si una columna existe en la tabla, úsala exactamente.
-- Si un dato no aparece en QAD, escribe "NO DISPONIBLE EN QAD".
-- No inventes vendedores.
-- No inventes clientes.
-- No inventes importes.
-- No inventes conclusiones fuera de los datos.
-`;
-}
-
-function buildPermissionContext(username) {
-  const cleanUsername = String(username || '').trim().toUpperCase();
-
-  const NO_CONTABLE_USERS = [
-    'LEO2026',
-    'GTE_ACABADO',
-    'GTE_TEJIDO',
-    'GTE_HILATURA',
-    'ISRAEL_ACABADO',
-    'MEMO_TEJIDO',
-    'CARLOSM_H',
-  ];
-
-  const VENDEDOR_USERS = {
-    VENTAS_MONICA: 'Monica Caceres',
-    VENTAS_EDGAR: 'Edgar Zarate',
-    VENTAS_AMELIA: 'Amelia Aragon',
-    VENTAS_JORGE: 'Jorge Mejia',
-  };
-
-  if (NO_CONTABLE_USERS.includes(cleanUsername)) {
-    return `\n\nRESTRICCIONES DE ACCESO:
-- No mostrar información contable: activos, pasivos, balance general, estado de resultados, cuentas contables, debe, haber, patrimonio.
-- Si preguntan esos temas responde: "No tienes acceso a información contable. Consulta con el área de sistemas."
-- Sí puedes mostrar facturación, ventas, producción, inventario, clientes, proveedores, pedidos, cobranza y datos operativos.`;
-  }
-
-  if (VENDEDOR_USERS[cleanUsername]) {
-    const vend = VENDEDOR_USERS[cleanUsername];
-
-    return `\n\nRESTRICCIONES DE ACCESO:
-- Solo puedes mostrar información del vendedor: ${vend}.
-- Filtra siempre los datos para mostrar únicamente ventas, pedidos, atrasos, clientes y bodega/almacén relacionados con ${vend}.
-- Si preguntan sobre otros vendedores responde: "Solo tienes acceso a tu información de ventas."
-- Nunca muestres datos de otros vendedores.`;
-  }
-
-  if (cleanUsername === 'ISMAEL_VENTAS') {
-    return `\n\nACCESOS HABILITADOS:
-- Puede ver ventas de todos los vendedores, producción, pedidos con y sin cliente, almacén de tela acabada y bodega.`;
-  }
-
-  return '';
-}
-
-function buildExecutivePrompt() {
-  return `
-==============================
-MODO AVIVA ESTRICTO SIN INVENCIÓN
-==============================
-
-Eres AVIVA, inteligencia empresarial de Grupo Vivatex.
-
-REGLA MÁS IMPORTANTE:
-NO INVENTES ABSOLUTAMENTE NADA.
-
-Tu única fuente de verdad son los datos QAD incluidos en el contexto.
-
-PROHIBIDO:
-- Inventar vendedores.
-- Inventar clientes.
-- Inventar saldos.
-- Inventar nombres.
-- Inventar códigos.
-- Inventar fechas.
-- Decir que un campo no existe si aparece como columna en la tabla QAD.
-- Dar conclusiones que no salgan de los datos.
-
-OBLIGATORIO:
-- Responder en español.
-- Responder con formato profesional.
-- Responder con tablas markdown siempre que haya datos.
-- Mostrar la información de forma organizada y fácil de leer.
-- Si preguntas por clientes, vendedores, saldos, cartera, pedidos, inventario o ventas, usa tabla.
-- Mantén nombres, códigos, vendedores, importes y fechas exactamente como aparecen en QAD.
-- Si un campo aparece vacío, escribe "NO DISPONIBLE EN QAD".
-
-FORMATO OBLIGATORIO CUANDO HAYA DATOS:
-
-## Resumen ejecutivo
-Explica qué se encontró, sin inventar.
-
-## Tabla principal
-Incluye una tabla markdown con los datos QAD relevantes.
-
-## Análisis basado únicamente en QAD
-Explica patrones, saldos, importes, fechas o vendedores solo si aparecen en QAD.
-
-## Observaciones
-Aclara campos vacíos, coincidencias múltiples o limitaciones.
-
-## Siguiente acción sugerida
-Sugiere revisar, exportar o filtrar información.
-
-TABLAS:
-Las tablas deben estar en markdown correcto:
-| Columna | Columna |
-|---|---|
-| Dato | Dato |
-`;
-}
-
 app.post('/api/chat', async (req, res) => {
   const { messages, system, username } = req.body || {};
 
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
     return res.status(400).json({ error: 'Faltan mensajes' });
-  }
-
-  if (!system) {
-    return res.status(400).json({ error: 'Falta system prompt' });
   }
 
   if (!OPENAI_API_KEY) {
@@ -1010,48 +840,12 @@ app.post('/api/chat', async (req, res) => {
 
   try {
     const cache = pool ? await loadQADFromDB() : qadDataCache;
-
     const lastMsg = messages[messages.length - 1]?.content || '';
-    const lastMsgNorm = normalizeText(lastMsg);
 
-    if (
-      lastMsgNorm.includes('que archivos') ||
-      lastMsgNorm.includes('archivos qad') ||
-      lastMsgNorm.includes('que datos tienes') ||
-      lastMsgNorm.includes('que tienes cargado') ||
-      lastMsgNorm.includes('archivos cargados')
-    ) {
-      return res.json({
-        reply: formatQADFilesTable(cache),
-      });
+    const directReply = buildDeterministicQADReply(cache, lastMsg);
+    if (directReply) {
+      return res.json({ reply: directReply });
     }
-
-    const qadContext = buildQADContext(cache, messages);
-    const permContext = buildPermissionContext(username);
-    const executivePrompt = buildExecutivePrompt();
-
-    const dataSize = qadContext.length;
-    const sheetsIncluded = (qadContext.match(/### ARCHIVO:/g) || []).length;
-
-    console.log(`Chat request: user="${username || '-'}" provider="${AI_PROVIDER}" model="${OPENAI_MODEL}" qadContext=${dataSize} chars, sheets=${sheetsIncluded}`);
-
-    const fullSystem = `
-${String(system)}
-
-${executivePrompt}
-
-${qadContext}
-
-${permContext}
-`;
-
-    const openaiMessages = [
-      { role: 'system', content: fullSystem },
-      ...messages.map(m => ({
-        role: m.role === 'assistant' ? 'assistant' : 'user',
-        content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content || ''),
-      })),
-    ];
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -1061,19 +855,26 @@ ${permContext}
       },
       body: JSON.stringify({
         model: OPENAI_MODEL,
-        messages: openaiMessages,
+        messages: [
+          {
+            role: 'system',
+            content: `${system || ''}
+
+Eres AVIVA, asistente empresarial de Grupo Vivatex. No inventes datos. Si no tienes QAD suficiente, dilo claramente.`
+          },
+          ...messages.map(m => ({
+            role: m.role === 'assistant' ? 'assistant' : 'user',
+            content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content || ''),
+          })),
+        ],
         temperature: 0,
-        max_tokens: 4096,
-        presence_penalty: 0,
-        frequency_penalty: 0,
+        max_tokens: 2048,
       }),
     });
 
     if (!response.ok) {
       const errText = await response.text();
-
       console.error('OpenAI API error:', response.status, errText);
-
       return res.status(response.status).json({
         error: 'Error en API de IA',
         detail: errText,
@@ -1088,7 +889,6 @@ ${permContext}
     res.json({ reply });
   } catch (err) {
     console.error('Error en /api/chat:', err);
-
     res.status(500).json({
       error: 'Error interno del servidor',
       detail: err.message,
