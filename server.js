@@ -274,11 +274,54 @@ app.post('/api/qad/upload', upload.array('files', 20), async (req, res) => {
     if (ext === '.pdf') {
       try {
         const p = await pdfParse(file.buffer);
-        const data = String(p.text || '').split('\n').filter(Boolean).map((x, i) => ({ linea: i + 1, texto: x }));
+        const rawText = String(p.text || '').trim();
+
+        if (!rawText) {
+          console.warn('PDF sin texto:', file.originalname);
+          continue;
+        }
+
+        const lines = rawText.split('\n').map(l => l.trim()).filter(l => l.length > 2);
+        let data = [];
+
+        // Detectar si tiene estructura de tabla (columnas separadas por 2+ espacios)
+        const tabularLines = lines.filter(l => /\s{2,}/.test(l));
+        const isTabular = tabularLines.length > lines.length * 0.3 && lines.length > 3;
+
+        if (isTabular) {
+          // Buscar línea de encabezados
+          let headerIdx = 0;
+          for (let i = 0; i < Math.min(10, lines.length); i++) {
+            if (/\s{2,}/.test(lines[i])) { headerIdx = i; break; }
+          }
+          const headers = lines[headerIdx].split(/\s{2,}/).map(h => h.trim()).filter(Boolean);
+
+          if (headers.length >= 2) {
+            for (let i = headerIdx + 1; i < lines.length; i++) {
+              const parts = lines[i].split(/\s{2,}/).map(p2 => p2.trim());
+              if (parts.length >= 2) {
+                const row = {};
+                headers.forEach((h, idx) => { row[h] = parts[idx] || ''; });
+                data.push(row);
+              }
+            }
+          }
+        }
+
+        // Fallback: guardar como texto línea por línea
+        if (!data.length) {
+          data = lines.map((l, i) => ({
+            linea: i + 1,
+            contenido: l,
+            archivo: file.originalname
+          }));
+        }
+
         const key = `${file.originalname}_PDF`.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 200);
         await saveQAD(key, file.originalname, 'PDF', data);
+        console.log(`✅ PDF: ${file.originalname} — ${data.length} registros`);
         sheets++; files++;
-      } catch(e) { console.error('Error PDF:', e.message); }
+      } catch(e) { console.error('Error PDF:', file.originalname, e.message); }
     }
   }
   res.json({ ok: true, files, sheets });
