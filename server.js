@@ -490,22 +490,60 @@ app.post('/api/qad/upload', upload.array('files', 20), async (req, res) => {
 app.get('/api/pdf/search/:query', async (req, res) => {
   if (!pool) return res.status(404).json({ found: false });
   try {
-    const query = req.params.query.trim();
-    const normQuery = query.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, ' ').trim();
-    
-    // Buscar por nombre display o filename
-    const r = await pool.query(
-      `SELECT id, filename, display_name FROM qad_pdfs 
-       WHERE lower(display_name) LIKE $1 OR lower(filename) LIKE $1
-       ORDER BY length(display_name) ASC LIMIT 5`,
+    const query = decodeURIComponent(req.params.query).trim();
+    const normQuery = query.toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g,' ').trim();
+
+    // 1. Buscar en qad_pdfs (PDF original guardado)
+    const hasPdfsTable = await tableExists('qad_pdfs');
+    if (hasPdfsTable) {
+      const r = await pool.query(
+        `SELECT id, filename, display_name FROM qad_pdfs
+         WHERE lower(display_name) LIKE $1 OR lower(filename) LIKE $1
+         ORDER BY length(display_name) ASC LIMIT 5`,
+        [`%${normQuery}%`]
+      );
+      if (r.rows.length) {
+        const best = r.rows[0];
+        return res.json({ found: true, id: best.id, filename: best.filename, displayName: best.display_name, source: 'pdf' });
+      }
+    }
+
+    // 2. Fallback: buscar en qad_data (PDFs subidos antes del nuevo código)
+    // Buscar por nombre de archivo que contenga el query
+    const r2 = await pool.query(
+      `SELECT sheet_key, filename, sheet_name FROM qad_data
+       WHERE lower(filename) LIKE $1 AND lower(filename) LIKE '%pdf%'
+       ORDER BY length(filename) ASC LIMIT 5`,
       [`%${normQuery}%`]
     );
 
-    if (!r.rows.length) return res.json({ found: false, query });
+    if (r2.rows.length) {
+      const best = r2.rows[0];
+      const displayName = best.filename
+        .replace(/\.pdf$/i,'')
+        .replace(/^FT[_\s-]*/i,'')
+        .replace(/[_-]/g,' ').trim().toUpperCase();
+      // Retornar como text source — no tiene PDF original
+      return res.json({ found: true, id: null, sheetKey: best.sheet_key, filename: best.filename, displayName, source: 'text' });
+    }
 
-    // Tomar el más corto (más específico)
-    const best = r.rows[0];
-    res.json({ found: true, id: best.id, filename: best.filename, displayName: best.display_name });
+    // 3. Buscar también por nombre sin extensión en qad_data
+    const r3 = await pool.query(
+      `SELECT sheet_key, filename FROM qad_data
+       WHERE (lower(filename) LIKE $1 OR lower(sheet_name) LIKE $1)
+       ORDER BY length(filename) ASC LIMIT 5`,
+      [`%${normQuery}%`]
+    );
+
+    if (r3.rows.length) {
+      const best = r3.rows[0];
+      const displayName = best.filename.replace(/\.pdf$/i,'').replace(/^FT[_\s-]*/i,'').replace(/[_-]/g,' ').trim().toUpperCase();
+      return res.json({ found: true, id: null, sheetKey: best.sheet_key, filename: best.filename, displayName, source: 'text' });
+    }
+
+    return res.json({ found: false, query });
   } catch(e) {
     console.error('Error buscando PDF:', e.message);
     res.status(500).json({ found: false });
