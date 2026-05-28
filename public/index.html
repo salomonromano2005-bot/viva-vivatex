@@ -827,10 +827,90 @@ function sendChip(text) { document.getElementById('msgInput').value=text; sendMe
 function handleKey(e) { if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();} }
 function autoResize(el) { el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,150)+'px'; }
 
+// Detectar si el texto es una solicitud de ficha técnica
+function detectFichaTecnica(text) {
+  const t = text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+  const triggers = ['ficha tecnica','ficha de la tela','ficha del articulo','dame la ficha','muestra la ficha','especificaciones de la tela','ft ','ficha tecnica de'];
+  return triggers.some(tr => t.includes(tr)) || /^(dame|muestra|ver|busca).{0,20}(ficha|ft)\s+\w/i.test(text);
+}
+
+// Extraer nombre de tela del mensaje
+function extractTelaNombre(text) {
+  const clean = text
+    .replace(/dame\s+(la\s+)?ficha\s+t[eé]cnica\s+(de\s+(la\s+)?)?/gi, '')
+    .replace(/ficha\s+t[eé]cnica\s+(de\s+(la\s+)?)?/gi, '')
+    .replace(/especificaciones\s+(de\s+(la\s+)?)?/gi, '')
+    .replace(/dame\s+la\s+ficha\s+(de\s+)?/gi, '')
+    .replace(/muestra\s+(la\s+)?ficha\s+(de\s+)?/gi, '')
+    .replace(/ficha\s+de\s+(la\s+)?/gi, '')
+    .replace(/tela\s+/gi, '')
+    .replace(/articulo\s+/gi, '')
+    .replace(/[¿?.,]/g, '')
+    .trim();
+  return clean;
+}
+
 async function sendMessage() {
   const input = document.getElementById('msgInput');
   const text = input.value.trim();
   if (!text||!currentUser) return;
+
+  // ── INTERCEPCIÓN: Si pide ficha técnica, buscar PDF directo ──
+  if (detectFichaTecnica(text)) {
+    const telaQuery = extractTelaNombre(text);
+    if (telaQuery && telaQuery.length > 1) {
+      input.value=''; input.style.height='auto';
+      document.getElementById('sendBtn').disabled=true;
+      const time = new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
+      if (!currentConvId) newChat();
+      if (!conversations[currentConvId]) conversations[currentConvId]={title:text.substring(0,60),messages:[]};
+      const conv = conversations[currentConvId];
+      conv.messages.push({role:'user',content:text,time});
+      if (conv.title==='Nueva conversación') conv.title=text.substring(0,60);
+      renderMessages();
+
+      // Mostrar typing
+      const container = document.getElementById('chatMessages');
+      const te = document.createElement('div');
+      te.className='msg assistant'; te.id='typingMsg';
+      te.innerHTML='<div class="msg-avatar">V</div><div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>';
+      container.appendChild(te); container.scrollTop=container.scrollHeight;
+
+      try {
+        const pdfRes = await fetch('/api/pdf/search/' + encodeURIComponent(telaQuery));
+        const pdfData = await pdfRes.json();
+        te.remove();
+        const rTime = new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
+
+        if (pdfData.found) {
+          conv.messages.push({
+            role:'assistant',
+            content:`✅ Aquí está la ficha técnica de **${pdfData.displayName}**`,
+            pdfId: pdfData.id,
+            pdfName: pdfData.displayName,
+            time: rTime
+          });
+        } else {
+          conv.messages.push({
+            role:'assistant',
+            content:`No encontré la ficha técnica de **"${telaQuery}"**. Verifica que el nombre sea correcto o que el PDF haya sido subido en el Panel de Sistemas.
+
+Puedes preguntar: _¿Qué fichas técnicas tienes disponibles?_ para ver la lista completa.`,
+            time: rTime
+          });
+        }
+        renderMessages(); renderHistory(); saveCurrentConv();
+      } catch(e) {
+        te.remove();
+        const rTime = new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
+        conv.messages.push({role:'assistant',content:'Error buscando la ficha técnica. Intenta de nuevo.',time:rTime});
+        renderMessages();
+      }
+      document.getElementById('sendBtn').disabled=false;
+      document.getElementById('msgInput').focus();
+      return; // No continuar con Claude
+    }
+  }
   input.value=''; input.style.height='auto';
   document.getElementById('sendBtn').disabled=true;
   const time = new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
@@ -855,25 +935,6 @@ async function sendMessage() {
     const rTime = new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
     const msgObj = {role:'assistant',content:data.reply||'Sin respuesta.',time:rTime};
     if (data.excelData) { msgObj.excelData=data.excelData; lastExcelData=data.excelData; }
-
-    // Detectar si es una solicitud de ficha técnica y buscar el PDF
-    const isFicha = /ficha.t[eé]cnica|ficha de|especificaciones de|ft\s+\w|dame la ficha|muestra la ficha/i.test(text);
-    if (isFicha) {
-      // Extraer nombre de tela del mensaje
-      const telaMatch = text.match(/(?:ficha|tela|de la tela|del artículo|del articulo|de)\s+([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑA-Za-z0-9\s]+?)(?:\s*$|\s*[?,.])/i);
-      const telaQuery = telaMatch?.[1]?.trim() || text.replace(/ficha|técnica|tecnica|de la|del|dame|muestra|especificaciones/gi,'').trim();
-      if (telaQuery && telaQuery.length > 1) {
-        try {
-          const pdfRes = await fetch('/api/pdf/search/' + encodeURIComponent(telaQuery));
-          const pdfData = await pdfRes.json();
-          if (pdfData.found) {
-            msgObj.pdfId = pdfData.id;
-            msgObj.pdfName = pdfData.displayName;
-            msgObj.content = `✅ Encontré la ficha técnica de **${pdfData.displayName}**. Puedes verla o descargarla abajo.`;
-          }
-        } catch(e) { console.warn('Error buscando PDF:', e); }
-      }
-    }
 
     conv.messages.push(msgObj);
     conv.updatedAt = new Date().toISOString();
