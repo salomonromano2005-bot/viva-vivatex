@@ -17,6 +17,54 @@ const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5';
 
 let pool = null;
 
+// ─── PERMISOS POR USUARIO ─────────────────────────────────────────
+const USER_PERMISSIONS = {
+  'JRZ123':          { type: 'full',      panel: false, restrict: [] },
+  'JRR234':          { type: 'full',      panel: false, restrict: [] },
+  'SRR456':          { type: 'full',      panel: false, restrict: [] },
+  'SRB0707':         { type: 'full',      panel: false, restrict: [] },
+  'SISTEMAS1900':    { type: 'admin',     panel: true,  restrict: [] },
+  'LEO2026':         { type: 'no_conta',  panel: false, restrict: ['contabilidad','activos','pasivos','balance','estado de resultados','cuentas contables','debe haber','mayor general','poliza','polizas'] },
+  'ISMAEL_VENTAS':   { type: 'ventas',    panel: false, restrict: [], allow: ['ventas','produccion','pedidos','almacen','bodega','tela acabada','vendedores'] },
+  'ISRAEL_ACABADO':  { type: 'no_conta',  panel: false, restrict: ['contabilidad','activos','pasivos','balance','estado de resultados','cuentas contables','debe haber','mayor general','poliza','polizas'] },
+  'MEMO_TEJIDO':     { type: 'no_conta',  panel: false, restrict: ['contabilidad','activos','pasivos','balance','estado de resultados','cuentas contables','debe haber','mayor general','poliza','polizas'] },
+  'CARLOSM_H':       { type: 'no_conta',  panel: false, restrict: ['contabilidad','activos','pasivos','balance','estado de resultados','cuentas contables','debe haber','mayor general','poliza','polizas'] },
+  'MARTIN_CONTA':    { type: 'full',      panel: false, restrict: [] },
+  'VENTAS_MONICA':   { type: 'vendedor',  panel: false, restrict: [], vendedor: 'MONICA CACERES',  allow: ['ventas','pedidos','atrasos','clientes','bodega','almacen','tela acabada'] },
+  'VENTAS_EDGAR':    { type: 'vendedor',  panel: false, restrict: [], vendedor: 'EDGAR ZARATE',    allow: ['ventas','pedidos','atrasos','clientes','bodega','almacen','tela acabada'] },
+  'VENTAS_AMELIA':   { type: 'vendedor',  panel: false, restrict: [], vendedor: 'AMELIA ARAGON',   allow: ['ventas','pedidos','atrasos','clientes','bodega','almacen','tela acabada'] },
+  'VENTAS_JORGE':    { type: 'vendedor',  panel: false, restrict: [], vendedor: 'JORGE',           allow: ['ventas','pedidos','atrasos','clientes','bodega','almacen','tela acabada'] },
+  'ADMON_LUCY':      { type: 'full',      panel: false, restrict: [] },
+};
+
+function getPerms(username) {
+  return USER_PERMISSIONS[String(username || '').toUpperCase()] || { type: 'full', panel: false, restrict: [] };
+}
+
+function buildPermissionContext(username) {
+  const p = getPerms(username);
+  let ctx = '';
+
+  if (p.type === 'no_conta') {
+    ctx = `RESTRICCIÓN: Este usuario NO puede ver información contable. Si pregunta sobre contabilidad, activos, pasivos, balance general, estado de resultados o cuentas contables, responde: "No tienes acceso a información contable. Consulta con el área de Contabilidad." Para todo lo demás, responde normalmente.`;
+  } else if (p.type === 'vendedor') {
+    ctx = `RESTRICCIÓN: Este usuario es vendedor (${p.vendedor}). SOLO puede ver:
+- Sus propias ventas (filtrar por vendedor = ${p.vendedor})
+- Sus propios clientes y pedidos
+- Información de bodega/almacén general
+Si pregunta por datos de OTROS vendedores o información confidencial de otros usuarios, responde: "Solo puedes ver tu propia información de ventas y tus clientes."
+Cuando muestres datos de ventas, filtra SOLO los registros donde el vendedor sea ${p.vendedor}.`;
+  } else if (p.type === 'ventas') {
+    ctx = `RESTRICCIÓN: Este usuario puede ver ventas, producción, pedidos, almacén y bodega. No puede ver información contable ni financiera confidencial.`;
+  } else if (p.type === 'admin') {
+    ctx = `ACCESO TOTAL: Administrador del sistema. Puede ver toda la información.`;
+  } else {
+    ctx = `ACCESO COMPLETO: Puede ver toda la información operativa de la empresa.`;
+  }
+
+  return ctx;
+}
+
 function pgSsl() {
   if (!DATABASE_URL) return false;
   if (DATABASE_URL.includes('localhost') || DATABASE_URL.includes('127.0.0.1')) return false;
@@ -55,6 +103,7 @@ async function initDB() {
     ['MARTIN_CONTA','Vivatex2026','user'],['VENTAS_MONICA','Vivatex2026','user'],
     ['VENTAS_EDGAR','Vivatex2026','user'],['VENTAS_AMELIA','Vivatex2026','user'],
     ['VENTAS_JORGE','Vivatex2026','user'],
+    ['ADMON_LUCY','Vivatex2026','user'],
   ];
   for (const u of users) {
     await pool.query(`INSERT INTO usuarios (username,password,role,active) VALUES ($1,$2,$3,true) ON CONFLICT (username) DO NOTHING`, u);
@@ -73,21 +122,6 @@ function norm(v) {
   return String(v || '').toLowerCase().normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, ' ')
     .replace(/\s+/g, ' ').trim();
-}
-
-function cleanPayload(data) {
-  if (!data) return [];
-  if (Array.isArray(data)) return data;
-  if (typeof data === 'string') {
-    try { return cleanPayload(JSON.parse(data)); }
-    catch { return data.split('\n').filter(Boolean).map((x, i) => ({ linea: i + 1, texto: x })); }
-  }
-  if (typeof data === 'object') {
-    if (Array.isArray(data.data)) return data.data;
-    if (Array.isArray(data.rows)) return data.rows;
-    return [data];
-  }
-  return [];
 }
 
 async function tableExists(name) {
@@ -112,16 +146,62 @@ async function saveUserMemory(username, memory) {
   } catch(e) {}
 }
 
+// ─── BÚSQUEDA PARCIAL DE NOMBRES ─────────────────────────────────
+// Extrae todos los nombres únicos de clientes/vendedores de QAD
+async function getAllNames() {
+  if (!pool) return [];
+  try {
+    // Buscar en hojas de CxC y ventas los nombres únicos
+    const r = await pool.query(`
+      SELECT DISTINCT elem->>'Cliente' as nombre FROM qad_data, jsonb_array_elements(data) AS elem
+      WHERE elem->>'Cliente' IS NOT NULL AND length(elem->>'Cliente') > 2
+      UNION
+      SELECT DISTINCT elem->>'Nombre' as nombre FROM qad_data, jsonb_array_elements(data) AS elem
+      WHERE elem->>'Nombre' IS NOT NULL AND length(elem->>'Nombre') > 2
+      UNION
+      SELECT DISTINCT elem->>'CLIENTE' as nombre FROM qad_data, jsonb_array_elements(data) AS elem
+      WHERE elem->>'CLIENTE' IS NOT NULL AND length(elem->>'CLIENTE') > 2
+      LIMIT 500
+    `);
+    return r.rows.map(r => r.nombre).filter(Boolean);
+  } catch(e) { return []; }
+}
+
+// Encuentra el nombre más parecido al que escribió el usuario
+function fuzzyMatch(query, names) {
+  if (!query || !names.length) return null;
+  const q = norm(query);
+  
+  // Coincidencia exacta primero
+  const exact = names.find(n => norm(n) === q);
+  if (exact) return exact;
+  
+  // Coincidencia parcial — el query está contenido en el nombre o viceversa
+  const partial = names.filter(n => {
+    const nn = norm(n);
+    return nn.includes(q) || q.includes(nn) || 
+           q.split(' ').some(w => w.length > 3 && nn.includes(w));
+  });
+  
+  if (partial.length === 1) return partial[0];
+  if (partial.length > 1) {
+    // Retornar el más corto (más específico)
+    return partial.sort((a, b) => a.length - b.length)[0];
+  }
+  
+  return null;
+}
+
 // ─── DETECCIÓN DE HOJAS RELEVANTES ───────────────────────────────
 function detectRelevantSheets(userMessage, sources) {
   const msg = norm(userMessage);
   const mappings = [
-    { keys: ['cartera','saldo','cliente','cxc','cobrar','deuda','vencido','antiguedad','adeudo','pago atrasado','atrasado','moroso','cobranza','debe','deben'], patterns: ['cxc','saldo','cliente','cartera','cobrar','antiguedad'] },
-    { keys: ['venta','factura','remision','ingreso','pedido vendido'], patterns: ['venta','factura','remision','ingreso','pedido'] },
-    { keys: ['inventario','stock','existencia','almacen','metros disponibles','disponible'], patterns: ['inventario','stock','existencia','almacen'] },
-    { keys: ['proveedor','cxp','pagar proveedor','compra','abastecimiento'], patterns: ['proveedor','cxp','pagar','compra'] },
-    { keys: ['produccion','manufactura','tejido metros','acabado metros','fabricacion'], patterns: ['produccion','manufactura','tejido','acabado'] },
-    { keys: ['especificacion','ficha tecnica','gramaje','composicion','tela tecnica'], patterns: ['especificacion','ficha','tecnica'] },
+    { keys: ['cartera','saldo','cliente','cxc','cobrar','deuda','vencido','antiguedad','adeudo','atrasado','moroso','cobranza','debe','deben','cuanto debe','factura pendiente'], patterns: ['cxc','saldo','cliente','cartera','cobrar','antiguedad'] },
+    { keys: ['venta','factura','remision','ingreso','vendedor','pedido venta'], patterns: ['venta','factura','remision','ingreso','pedido'] },
+    { keys: ['inventario','stock','existencia','almacen','metros disponibles','bodega','tela acabada'], patterns: ['inventario','stock','existencia','almacen'] },
+    { keys: ['proveedor','cxp','pagar proveedor','compra'], patterns: ['proveedor','cxp','pagar','compra'] },
+    { keys: ['produccion','tejido metros','acabado metros','manufactura'], patterns: ['produccion','manufactura','tejido','acabado'] },
+    { keys: ['especificacion','ficha tecnica','gramaje','composicion'], patterns: ['especificacion','ficha','tecnica'] },
   ];
 
   let relevantPatterns = [];
@@ -133,37 +213,43 @@ function detectRelevantSheets(userMessage, sources) {
   }
 
   if (!relevantPatterns.length) return sources;
-
   const relevant = sources.filter(src => {
     const n = norm(`${src.filename} ${src.sheet_name}`);
     return relevantPatterns.some(p => n.includes(p));
   });
-
   return relevant.length > 0 ? relevant : sources;
 }
 
-// ─── BÚSQUEDA QAD INTELIGENTE ─────────────────────────────────────
+// ─── BÚSQUEDA QAD ─────────────────────────────────────────────────
 async function searchQAD(userMessage, maxRows = 300) {
-  if (!pool) return { rows: [], total: 0, sources: [], sourceInfo: '' };
+  if (!pool) return { rows: [], total: 0, sourceInfo: '' };
 
   try {
     const allSources = await pool.query(
       `SELECT sheet_key, filename, sheet_name, updated_at, jsonb_array_length(data) as count FROM qad_data ORDER BY updated_at DESC`
     );
-    if (!allSources.rows.length) return { rows: [], total: 0, sources: [], sourceInfo: '' };
+    if (!allSources.rows.length) return { rows: [], total: 0, sourceInfo: '' };
 
     const total = allSources.rows.reduce((s, r) => s + (parseInt(r.count) || 0), 0);
-
-    // Detectar hojas relevantes
     const relevantSources = detectRelevantSheets(userMessage, allSources.rows);
-    console.log(`Hojas relevantes (${relevantSources.length}): ${relevantSources.map(s => s.filename).join(', ')}`);
+
+    // Búsqueda parcial de nombres
+    const allNames = await getAllNames();
+    const msgWords = norm(userMessage).split(' ').filter(w => w.length > 3);
+    let resolvedNames = [];
+    for (const word of msgWords) {
+      const match = fuzzyMatch(word, allNames);
+      if (match) resolvedNames.push(match);
+    }
+    if (resolvedNames.length) {
+      console.log(`Nombres resueltos: ${resolvedNames.join(', ')}`);
+    }
 
     let allMatches = [];
 
     for (const src of relevantSources) {
-      // Límite por hoja según tamaño — hojas pequeñas van completas
       const srcCount = parseInt(src.count) || 0;
-      const limit = srcCount <= 500 ? srcCount : 200;
+      const limit = srcCount <= 500 ? srcCount : 250;
 
       const r = await pool.query(
         `SELECT jsonb_array_elements(data) as row FROM qad_data WHERE sheet_key = $1 LIMIT $2`,
@@ -172,38 +258,36 @@ async function searchQAD(userMessage, maxRows = 300) {
       r.rows.forEach(row => allMatches.push({ ...row.row, _src: `${src.filename}/${src.sheet_name}` }));
     }
 
-    // Info de fuentes para el contexto
+    // Si hay nombres resueltos, filtrar primero por esos nombres
+    if (resolvedNames.length && allMatches.length) {
+      const filtered = allMatches.filter(row => {
+        const rowText = norm(JSON.stringify(row));
+        return resolvedNames.some(name => rowText.includes(norm(name)));
+      });
+      if (filtered.length > 0) allMatches = filtered;
+    }
+
     const sourceInfo = relevantSources.map(s =>
       `• ${s.filename} (${s.sheet_name}) — ${s.count} registros`
     ).join('\n');
 
-    return { rows: allMatches.slice(0, maxRows), total, sources: relevantSources, sourceInfo };
+    return { rows: allMatches.slice(0, maxRows), total, sourceInfo, resolvedNames };
   } catch(e) {
     console.error('searchQAD error:', e.message);
-    return { rows: [], total: 0, sources: [], sourceInfo: '' };
+    return { rows: [], total: 0, sourceInfo: '' };
   }
 }
 
-// ─── CONSTRUIR CONTEXTO QAD COMPACTO ─────────────────────────────
-// Convierte los datos en texto compacto para no exceder tokens
+// ─── CONTEXTO QAD ─────────────────────────────────────────────────
 async function buildQADContext(userMessage = '') {
   try {
-    if (!pool || !(await tableExists('qad_data'))) {
-      return { hasData: false, text: 'No hay datos QAD cargados.' };
-    }
-
+    if (!pool || !(await tableExists('qad_data'))) return { hasData: false, text: 'No hay datos QAD.' };
     const countR = await pool.query('SELECT COUNT(*) as c FROM qad_data');
-    if (parseInt(countR.rows[0].c) === 0) {
-      return { hasData: false, text: 'No hay archivos QAD. El administrador debe subirlos desde Panel de Sistemas → Archivos QAD.' };
-    }
+    if (parseInt(countR.rows[0].c) === 0) return { hasData: false, text: 'No hay archivos QAD cargados.' };
 
-    const { rows, total, sourceInfo } = await searchQAD(userMessage, 300);
+    const { rows, total, sourceInfo, resolvedNames } = await searchQAD(userMessage, 300);
+    if (!rows.length) return { hasData: false, text: 'No encontré datos para esta consulta.' };
 
-    if (!rows.length) {
-      return { hasData: false, text: 'No encontré datos para esta consulta en QAD.' };
-    }
-
-    // Agrupar por fuente
     const bySrc = {};
     rows.forEach(row => {
       const src = row._src || 'QAD';
@@ -214,8 +298,9 @@ async function buildQADContext(userMessage = '') {
     });
 
     let ctx = `DATOS QAD — ${total.toLocaleString('es-MX')} registros totales\n`;
-    ctx += `Fuentes consultadas:\n${sourceInfo}\n\n`;
-    ctx += `REGISTROS PARA ESTA CONSULTA (${rows.length}):\n\n`;
+    if (resolvedNames?.length) ctx += `Búsqueda resuelta para: ${resolvedNames.join(', ')}\n`;
+    ctx += `Fuentes:\n${sourceInfo}\n\n`;
+    ctx += `REGISTROS (${rows.length}):\n\n`;
 
     Object.keys(bySrc).forEach(src => {
       const srcRows = bySrc[src];
@@ -223,21 +308,76 @@ async function buildQADContext(userMessage = '') {
       const cols = Object.keys(srcRows[0]);
       ctx += `=== ${src} ===\n`;
       ctx += cols.join(' | ') + '\n';
-      srcRows.forEach(row => {
-        ctx += cols.map(c => fmt(row[c])).join(' | ') + '\n';
-      });
+      srcRows.forEach(row => { ctx += cols.map(c => fmt(row[c])).join(' | ') + '\n'; });
       ctx += '\n';
     });
 
-    if (total > rows.length) {
-      ctx += `\n(Mostrando ${rows.length} de ${total} registros. Para ver más, especifica cliente, fecha o período exacto.)`;
-    }
-
+    if (total > rows.length) ctx += `\n(Mostrando ${rows.length} de ${total} registros.)`;
     return { hasData: true, text: ctx, shown: rows.length, total };
   } catch(e) {
     console.error('buildQADContext error:', e.message);
     return { hasData: false, text: 'Error cargando datos QAD.' };
   }
+}
+
+// ─── ALERTAS DE CARTERA VENCIDA ───────────────────────────────────
+async function getAlertas() {
+  const alertas = [];
+  if (!pool) return alertas;
+
+  try {
+    // Buscar hojas de CxC
+    const sources = await pool.query(
+      `SELECT sheet_key FROM qad_data WHERE lower(filename) LIKE '%cxc%' OR lower(filename) LIKE '%cartera%' OR lower(sheet_name) LIKE '%saldo%' OR lower(sheet_name) LIKE '%cliente%'`
+    );
+
+    for (const src of sources.rows) {
+      const r = await pool.query(
+        `SELECT jsonb_array_elements(data) as row FROM qad_data WHERE sheet_key = $1 LIMIT 500`,
+        [src.sheet_key]
+      );
+
+      for (const { row } of r.rows) {
+        // Buscar columnas de saldo/vencido
+        const keys = Object.keys(row);
+        const saldoKey = keys.find(k => /saldo|vencido|importe|total/i.test(k));
+        const clienteKey = keys.find(k => /cliente|nombre|razon/i.test(k));
+        const diasKey = keys.find(k => /dias|días|vencimiento/i.test(k));
+
+        if (!saldoKey || !clienteKey) continue;
+
+        const saldo = parseFloat(String(row[saldoKey] || '').replace(/[$,\s]/g, '')) || 0;
+        const dias = parseInt(row[diasKey] || '0') || 0;
+        const cliente = String(row[clienteKey] || '').trim();
+
+        if (!cliente) continue;
+
+        // Alerta si saldo vencido > 50,000 o días > 60
+        if (saldo > 50000 || dias > 60) {
+          alertas.push({
+            tipo: dias > 90 ? 'critico' : dias > 60 ? 'alto' : 'medio',
+            cliente,
+            saldo: saldo.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' }),
+            dias,
+            mensaje: dias > 90
+              ? `${cliente} tiene ${dias} días vencidos — REQUIERE ATENCIÓN INMEDIATA`
+              : `${cliente} tiene saldo vencido de ${saldo.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })}`
+          });
+        }
+      }
+    }
+
+    // Ordenar por criticidad
+    alertas.sort((a, b) => {
+      const order = { critico: 0, alto: 1, medio: 2 };
+      return (order[a.tipo] || 3) - (order[b.tipo] || 3);
+    });
+
+  } catch(e) {
+    console.error('Error alertas:', e.message);
+  }
+
+  return alertas.slice(0, 20);
 }
 
 // ─── UPLOAD ───────────────────────────────────────────────────────
@@ -275,27 +415,20 @@ app.post('/api/qad/upload', upload.array('files', 20), async (req, res) => {
       try {
         const p = await pdfParse(file.buffer);
         const rawText = String(p.text || '').trim();
-
-        if (!rawText) {
-          console.warn('PDF sin texto:', file.originalname);
-          continue;
-        }
+        if (!rawText) continue;
 
         const lines = rawText.split('\n').map(l => l.trim()).filter(l => l.length > 2);
         let data = [];
 
-        // Detectar si tiene estructura de tabla (columnas separadas por 2+ espacios)
         const tabularLines = lines.filter(l => /\s{2,}/.test(l));
         const isTabular = tabularLines.length > lines.length * 0.3 && lines.length > 3;
 
         if (isTabular) {
-          // Buscar línea de encabezados
           let headerIdx = 0;
           for (let i = 0; i < Math.min(10, lines.length); i++) {
             if (/\s{2,}/.test(lines[i])) { headerIdx = i; break; }
           }
           const headers = lines[headerIdx].split(/\s{2,}/).map(h => h.trim()).filter(Boolean);
-
           if (headers.length >= 2) {
             for (let i = headerIdx + 1; i < lines.length; i++) {
               const parts = lines[i].split(/\s{2,}/).map(p2 => p2.trim());
@@ -308,13 +441,8 @@ app.post('/api/qad/upload', upload.array('files', 20), async (req, res) => {
           }
         }
 
-        // Fallback: guardar como texto línea por línea
         if (!data.length) {
-          data = lines.map((l, i) => ({
-            linea: i + 1,
-            contenido: l,
-            archivo: file.originalname
-          }));
+          data = lines.map((l, i) => ({ linea: i + 1, contenido: l, archivo: file.originalname }));
         }
 
         const key = `${file.originalname}_PDF`.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 200);
@@ -330,7 +458,7 @@ app.post('/api/qad/upload', upload.array('files', 20), async (req, res) => {
 app.get('/api/qad/status', async (req, res) => {
   if (!pool) return res.json({ hasData: false, totalRecords: 0, sheets: [] });
   try {
-    const r = await pool.query('SELECT sheet_key, filename, sheet_name, jsonb_array_length(data) as count, updated_at FROM qad_data ORDER BY updated_at DESC');
+    const r = await pool.query('SELECT sheet_key,filename,sheet_name,jsonb_array_length(data) as count,updated_at FROM qad_data ORDER BY updated_at DESC');
     const total = r.rows.reduce((s, row) => s + (parseInt(row.count) || 0), 0);
     res.json({ hasData: total > 0, totalRecords: total, sheets: r.rows });
   } catch(e) { res.json({ hasData: false, totalRecords: 0, sheets: [] }); }
@@ -339,6 +467,18 @@ app.get('/api/qad/status', async (req, res) => {
 app.delete('/api/qad/clear', async (req, res) => {
   if (pool) await pool.query('DELETE FROM qad_data');
   res.json({ ok: true });
+});
+
+// ─── ALERTAS ──────────────────────────────────────────────────────
+app.get('/api/alertas', async (req, res) => {
+  const alertas = await getAlertas();
+  res.json({ alertas });
+});
+
+// ─── PERMISOS ─────────────────────────────────────────────────────
+app.get('/api/permisos/:username', (req, res) => {
+  const p = getPerms(req.params.username);
+  res.json({ perms: p });
 });
 
 // ─── USUARIOS ─────────────────────────────────────────────────────
@@ -350,7 +490,8 @@ app.post('/api/login', async (req, res) => {
       [String(username || '').toUpperCase(), password]);
     if (!r.rows.length) return res.json({ ok: false, error: 'Usuario o contraseña incorrectos' });
     if (!r.rows[0].active) return res.json({ ok: false, error: 'Usuario inactivo' });
-    res.json({ ok: true, user: r.rows[0] });
+    const perms = getPerms(r.rows[0].username);
+    res.json({ ok: true, user: { ...r.rows[0], hasPanel: perms.panel, perms } });
   } catch(e) { res.status(500).json({ ok: false, error: 'Error de servidor' }); }
 });
 
@@ -373,44 +514,59 @@ app.post('/api/usuarios', async (req, res) => {
 
 app.delete('/api/usuarios/:username', async (req, res) => {
   if (!pool) return res.json({ ok: false });
-  try {
-    await pool.query('UPDATE usuarios SET active=false WHERE UPPER(username)=$1', [req.params.username.toUpperCase()]);
-    res.json({ ok: true });
-  } catch(e) { res.json({ ok: false }); }
+  try { await pool.query('UPDATE usuarios SET active=false WHERE UPPER(username)=$1', [req.params.username.toUpperCase()]); res.json({ ok: true }); }
+  catch(e) { res.json({ ok: false }); }
 });
 
-// ─── MEMORIA ──────────────────────────────────────────────────────
 app.get('/api/memory/:username', async (req, res) => {
-  const mem = await getUserMemory(req.params.username);
-  res.json({ memory: mem });
+  res.json({ memory: await getUserMemory(req.params.username) });
 });
-
 app.post('/api/memory/:username', async (req, res) => {
   await saveUserMemory(req.params.username, req.body?.memory || '');
   res.json({ ok: true });
 });
 
-// ─── CHAT CON CLAUDE ──────────────────────────────────────────────
+// ─── CHAT ─────────────────────────────────────────────────────────
 app.post('/api/chat', async (req, res) => {
   const { messages, username } = req.body || {};
   if (!ANTHROPIC_API_KEY) return res.json({ reply: '⚠️ Falta ANTHROPIC_API_KEY en Railway.' });
 
   try {
     const lastUserMsg = (messages || []).filter(m => m.role === 'user').slice(-1)[0]?.content || '';
+    const perms = getPerms(username);
 
-    // Cargar QAD y memoria en paralelo
+    // Verificar restricciones ANTES de llamar a Claude
+    const msgNorm = norm(lastUserMsg);
+    if (perms.restrict?.length) {
+      const blocked = perms.restrict.some(r => msgNorm.includes(norm(r)));
+      if (blocked) {
+        return res.json({ reply: '🚫 No tienes acceso a esa información. Si necesitas datos contables, contacta al área de Contabilidad.' });
+      }
+    }
+
+    if (perms.type === 'vendedor' && perms.allow?.length) {
+      const allowed = perms.allow.some(a => msgNorm.includes(norm(a)));
+      const isGeneral = ['hola','ayuda','que puedes','como','gracias'].some(g => msgNorm.includes(g));
+      if (!allowed && !isGeneral && msgNorm.length > 10) {
+        // No bloquear, pero sí filtrar — dejar que Claude maneje con el contexto
+      }
+    }
+
     const [qadCtx, userMemory] = await Promise.all([
       buildQADContext(lastUserMsg),
       getUserMemory(username || '')
     ]);
 
-    // Sistema compacto para no exceder tokens
+    const permContext = buildPermissionContext(username);
+
     const systemPrompt = `Eres AVIVA, analista IA de Grupo Vivatex S.A. de C.V. NUNCA menciones Claude ni Anthropic.
 
+${permContext}
+
 REGLAS:
-1. NUNCA inventes datos — SOLO usa los registros QAD que recibes
-2. Si el cliente/dato no aparece en el contexto: "No encontré [X] en los datos disponibles. Verifica en QAD."
-3. SIEMPRE responde con tabla Markdown cuando hay datos tabulares
+1. NUNCA inventes datos — SOLO usa registros QAD del contexto
+2. Si no encuentras el dato: "No encontré [X] en los datos disponibles."
+3. SIEMPRE usa tabla Markdown para datos tabulares
 4. Copia nombres y números EXACTAMENTE como aparecen
 5. Ordena de mayor a menor por saldo/importe
 6. Incluye fila TOTAL al final de tablas numéricas
@@ -419,20 +575,19 @@ REGLAS:
 FORMATO TABLA:
 | Cliente | Saldo | Días |
 |---------|-------|------|
-| NOMBRE EXACTO | $1,234 | 90 |
+| NOMBRE | $1,234 | 90 |
 | **TOTAL** | **$X,XXX** | |
 
-PARA EXCEL — al final agrega:
+PARA EXCEL al final:
 %%EXCEL%%{"titulo":"Nombre","hojas":[{"nombre":"Hoja","columnas":["Col1","Col2"],"filas":[["val",123]],"totales":["TOTAL",123]}]}%%EXCEL%%
 
-${userMemory ? `MEMORIA USUARIO:\n${userMemory}\n` : ''}
+${userMemory ? `MEMORIA:\n${userMemory}\n` : ''}
 
 DATOS QAD:
 ${qadCtx.text}
 
-Usuario: ${username || 'Usuario'} | ${new Date().toLocaleString('es-MX', { timeZone: 'America/Mexico_City' })}`;
+Usuario: ${username} | ${new Date().toLocaleString('es-MX', { timeZone: 'America/Mexico_City' })}`;
 
-    // Mensajes limpios — máximo 6 turnos para no exceder tokens
     let cleanMessages = (messages || [])
       .filter(m => (m.role === 'user' || m.role === 'assistant') && String(m.content || '').trim())
       .slice(-6)
@@ -443,55 +598,34 @@ Usuario: ${username || 'Usuario'} | ${new Date().toLocaleString('es-MX', { timeZ
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: ANTHROPIC_MODEL,
-        max_tokens: 2048,
-        system: systemPrompt,
-        messages: cleanMessages
-      })
+      headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: ANTHROPIC_MODEL, max_tokens: 2048, system: systemPrompt, messages: cleanMessages })
     });
 
     const data = await response.json();
-
     if (!response.ok) {
-      console.error('Anthropic error:', data?.error?.message);
-      // Si es rate limit, esperar y dar mensaje amigable
-      if (response.status === 429) {
-        return res.json({ reply: '⏳ AVIVA está procesando muchas solicitudes en este momento. Por favor espera 10 segundos e intenta de nuevo.' });
-      }
+      if (response.status === 429) return res.json({ reply: '⏳ AVIVA está muy ocupada. Espera 15 segundos e intenta de nuevo.' });
       return res.json({ reply: `Error: ${data?.error?.message || response.status}` });
     }
 
     let reply = data.content?.[0]?.text || 'Sin respuesta.';
-
-    // Extraer Excel si hay
     let excelData = null;
     const excelMatch = reply.match(/%%EXCEL%%([\s\S]*?)%%EXCEL%%/);
     if (excelMatch) {
-      try {
-        excelData = JSON.parse(excelMatch[1].trim());
-        reply = reply.replace(/%%EXCEL%%[\s\S]*?%%EXCEL%%/, '').trim();
-      } catch(e) {}
+      try { excelData = JSON.parse(excelMatch[1].trim()); reply = reply.replace(/%%EXCEL%%[\s\S]*?%%EXCEL%%/, '').trim(); }
+      catch(e) {}
     }
 
-    // Guardar memoria si el usuario comparte info personal
-    const memTriggers = ['recuerda','mi nombre','llámame','soy el','soy la','trabajo en','mi área','soy gerente','soy director'];
-    if (memTriggers.some(t => norm(lastUserMsg).includes(norm(t)))) {
-      const currentMem = await getUserMemory(username || '');
-      const newMem = (currentMem + `\n[${new Date().toLocaleDateString('es-MX')}] ${lastUserMsg.substring(0, 150)}`).substring(0, 1500);
-      await saveUserMemory(username || '', newMem.trim());
+    const memTriggers = ['recuerda','mi nombre','llamame','soy el','soy la','trabajo en','mi area'];
+    if (memTriggers.some(t => msgNorm.includes(t))) {
+      const cur = await getUserMemory(username || '');
+      await saveUserMemory(username || '', (cur + `\n[${new Date().toLocaleDateString('es-MX')}] ${lastUserMsg.substring(0, 150)}`).substring(0, 1500).trim());
     }
 
     res.json({ reply, excelData });
-
   } catch(e) {
     console.error('Error /api/chat:', e.message);
-    res.status(500).json({ reply: 'Error interno. Intenta de nuevo en unos segundos.' });
+    res.status(500).json({ reply: 'Error interno. Intenta de nuevo.' });
   }
 });
 
@@ -516,79 +650,50 @@ app.get('/api/conversations/:username', async (req, res) => {
 
 app.delete('/api/conversations/:username/:convId', async (req, res) => {
   if (!pool) return res.json({ ok: true });
-  try {
-    await pool.query('DELETE FROM conversations WHERE username=$1 AND conv_id=$2', [req.params.username, req.params.convId]);
-    res.json({ ok: true });
-  } catch(e) { res.json({ ok: true }); }
+  try { await pool.query('DELETE FROM conversations WHERE username=$1 AND conv_id=$2', [req.params.username, req.params.convId]); res.json({ ok: true }); }
+  catch(e) { res.json({ ok: true }); }
 });
 
 // ─── EXCEL PROFESIONAL ────────────────────────────────────────────
 function generateProfessionalExcel(data) {
   const wb = xlsx.utils.book_new();
   const { titulo = 'Reporte', subtitulo = '', periodo = '', usuario = '', hojas = [] } = data;
-
   hojas.forEach(hoja => {
     const { nombre = 'Datos', columnas = [], filas = [], totales = null } = hoja;
     const wsData = [];
-
-    // Fila 1: Header empresa
     wsData.push([`GRUPO VIVATEX S.A. DE C.V.  ·  ${titulo.toUpperCase()}`]);
-    // Fila 2: Meta
-    wsData.push([`${subtitulo || nombre}   |   ${periodo || new Date().toLocaleDateString('es-MX')}   |   Usuario: ${usuario}   |   Generado: ${new Date().toLocaleString('es-MX')}`]);
-    // Fila 3: Espacio
+    wsData.push([`${subtitulo || nombre}   |   ${periodo || new Date().toLocaleDateString('es-MX')}   |   Usuario: ${usuario}   |   ${new Date().toLocaleString('es-MX')}`]);
     wsData.push([]);
-    // Fila 4: Headers
     wsData.push(columnas);
-    // Filas de datos
     filas.forEach(fila => wsData.push(fila));
-    // Fila totales
     if (totales) { wsData.push([]); wsData.push(totales); }
-
     const ws = xlsx.utils.aoa_to_sheet(wsData);
-
-    // Anchos automáticos
     const colWidths = columnas.map((col, i) => {
       let maxW = String(col).length + 4;
       filas.forEach(fila => { const l = String(fila[i] ?? '').length; if (l > maxW) maxW = l; });
       return { wch: Math.min(Math.max(maxW + 2, 12), 45) };
     });
     ws['!cols'] = colWidths;
-
-    // Merge header empresa
     if (columnas.length > 1) {
       ws['!merges'] = [
         { s: { r: 0, c: 0 }, e: { r: 0, c: columnas.length - 1 } },
         { s: { r: 1, c: 0 }, e: { r: 1, c: columnas.length - 1 } },
       ];
     }
-
     xlsx.utils.book_append_sheet(wb, ws, String(nombre).slice(0, 31));
   });
-
   return xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
 }
 
 app.post('/api/excel/generate', async (req, res) => {
   try {
     const buf = generateProfessionalExcel(req.body || {});
-    res.json({
-      ok: true,
-      base64: buf.toString('base64'),
-      filename: `Vivatex_${String(req.body?.titulo || 'Reporte').replace(/[^a-zA-Z0-9_]/g, '_')}_${new Date().toISOString().split('T')[0]}.xlsx`
-    });
-  } catch(e) {
-    console.error('Error Excel:', e.message);
-    res.json({ ok: false, error: e.message });
-  }
+    res.json({ ok: true, base64: buf.toString('base64'), filename: `Vivatex_${String(req.body?.titulo || 'Reporte').replace(/[^a-zA-Z0-9_]/g, '_')}_${new Date().toISOString().split('T')[0]}.xlsx` });
+  } catch(e) { res.json({ ok: false, error: e.message }); }
 });
 
-// ─── HEALTH ───────────────────────────────────────────────────────
-app.get('/api/health', async (req, res) => {
-  res.json({ ok: true, db: !!pool, model: ANTHROPIC_MODEL, provider: 'anthropic' });
-});
-
+app.get('/api/health', async (req, res) => res.json({ ok: true, db: !!pool, model: ANTHROPIC_MODEL }));
 app.get('/manifest.json', (req, res) => res.json({ name: 'AVIVA', short_name: 'AVIVA', start_url: '/', display: 'standalone', theme_color: '#1a1f16' }));
-
 app.get('*', (req, res) => {
   const index = path.join(__dirname, 'public', 'index.html');
   if (fs.existsSync(index)) return res.sendFile(index);
