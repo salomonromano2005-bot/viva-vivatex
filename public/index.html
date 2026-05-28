@@ -462,13 +462,34 @@ async function loginSuccess(user) {
   conversations = {};
   currentConvId = null;
   lastExcelData = null;
+
   document.getElementById('sidebarUser').textContent = user.username;
-  document.getElementById('sidebarRole').textContent = user.role==='admin'?'Administrador':'Usuario';
-  if (user.role==='admin') document.getElementById('navAdmin').style.display='flex';
+  const roleLabels = { admin:'⚙️ Administrador', full:'✅ Acceso Completo', no_conta:'📊 Operaciones', ventas:'💼 Ventas', vendedor:'🏷️ Vendedor' };
+  document.getElementById('sidebarRole').textContent = roleLabels[user.perms?.type] || 'Usuario';
+  if (user.hasPanel || user.role==='admin') document.getElementById('navAdmin').style.display='flex';
   document.getElementById('loginScreen').style.display='none';
   document.getElementById('appScreen').classList.add('active');
   await loadUserConversations();
   newChat();
+  setTimeout(() => loadAlertas(), 2000);
+}
+
+async function loadAlertas() {
+  try {
+    const res = await fetch('/api/alertas');
+    const data = await res.json();
+    const criticas = (data.alertas||[]).filter(a => a.tipo==='critico'||a.tipo==='alto');
+    if (!criticas.length) return;
+    const existing = document.getElementById('alertasBanner');
+    if (existing) existing.remove();
+    const banner = document.createElement('div');
+    banner.id = 'alertasBanner';
+    banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:1000;background:linear-gradient(135deg,#dc2626,#b91c1c);color:#fff;padding:10px 20px;display:flex;align-items:center;justify-content:space-between;font-size:13px;font-family:Outfit,sans-serif;box-shadow:0 2px 12px rgba(0,0,0,.3);';
+    const msg = criticas.length===1 ? `🚨 ${criticas[0].mensaje}` : `🚨 ${criticas.length} clientes con cartera crítica vencida`;
+    banner.innerHTML = `<div style="display:flex;align-items:center;gap:10px;flex:1"><span style="font-weight:700">${msg}</span><button onclick="sendChip('Dame los clientes con mayor saldo vencido')" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);color:#fff;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-family:Outfit,sans-serif">Ver detalle →</button></div><button onclick="document.getElementById('alertasBanner').remove()" style="background:none;border:none;color:#fff;font-size:18px;cursor:pointer;opacity:.8">✕</button>`;
+    document.body.prepend(banner);
+    setTimeout(() => { if(banner.parentNode) banner.remove(); }, 20000);
+  } catch(e) {}
 }
 
 document.getElementById('loginBtn').addEventListener('click', doLogin);
@@ -595,6 +616,23 @@ function renderMessages() {
       <div class="msg-avatar">${m.role==='assistant'?'V':(currentUser?.username||'U').substring(0,2)}</div>
       <div style="flex:1;min-width:0">
         <div class="msg-bubble">${m.role==='assistant'?formatMsg(m.content,i):escHtml(m.content)}</div>
+        ${m.pdfId?`<div style="margin-top:10px">
+          <div style="background:#f4faf0;border:1px solid #d4e8c4;border-radius:10px;padding:12px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+            <div style="font-size:32px">📄</div>
+            <div style="flex:1">
+              <div style="font-size:14px;font-weight:700;color:#1E6B2E">${escHtml(m.pdfName||'Ficha Técnica')}</div>
+              <div style="font-size:12px;color:#6a7060;margin-top:2px">Ficha técnica oficial — Grupo Vivatex</div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button onclick="viewPDF(${m.pdfId},'${escHtml(m.pdfName||'Ficha')}')" style="background:#1E6B2E;color:#fff;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;font-family:Outfit,sans-serif;display:flex;align-items:center;gap:6px">
+                👁️ Ver PDF
+              </button>
+              <button onclick="downloadPDF(${m.pdfId},'${escHtml(m.pdfName||'Ficha')}')" style="background:#fff;color:#1E6B2E;border:2px solid #1E6B2E;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;font-family:Outfit,sans-serif;display:flex;align-items:center;gap:6px">
+                📥 Descargar
+              </button>
+            </div>
+          </div>
+        </div>`:''}
         ${m.excelData?`<button class="excel-badge" onclick="downloadExcel(${i})">📥 Descargar Excel — ${escHtml(m.excelData.titulo||'Reporte')}</button>`:''}
         <div class="msg-time">${m.time||''}</div>
       </div>
@@ -678,40 +716,82 @@ function formatMsg(text, msgIdx) {
 }
 
 function buildChartHtml(chartData, id) {
-  const tipos = [{k:'bar',l:'Barras'},{k:'line',l:'Línea'},{k:'pie',l:'Pastel'},{k:'doughnut',l:'Dona'}];
+  const tipos = [{k:'bar',l:'Barras'},{k:'line',l:'Línea'},{k:'horizontalBar',l:'Horiz.'},{k:'pie',l:'Pastel'},{k:'doughnut',l:'Dona'}];
   const btns = tipos.map(t=>`<button class="chart-btn${t.k===chartData.type?' active':''}" onclick="switchChart('${id}','${t.k}',this)">${t.l}</button>`).join('');
-  return `<div class="chart-wrap"><div class="chart-title">${escHtml(chartData.title||'')}</div><div class="chart-btns">${btns}</div><canvas id="${id}" style="max-height:280px"></canvas></div>`;
+  return `<div class="chart-wrap"><div class="chart-title">${escHtml(chartData.title||'')}</div><div class="chart-btns">${btns}</div><canvas id="${id}" style="max-height:320px"></canvas></div>`;
+}
+
+function getVivaColors(count, alpha='0.85') {
+  const base = ['107,191,62','30,107,46','74,154,32','162,213,100','20,80,30','200,230,150','50,140,60','130,200,80','26,58,92','70,100,140'];
+  return Array.from({length:count},(_,i)=>`rgba(${base[i%base.length]},${alpha})`);
 }
 
 function renderChart(chartData, id) {
   const canvas = document.getElementById(id);
   if (!canvas) return;
   if (chartInstances[id]) { chartInstances[id].destroy(); delete chartInstances[id]; }
-  const vivaColors = ['rgba(107,191,62,.85)','rgba(30,107,46,.85)','rgba(74,154,32,.85)','rgba(162,213,100,.85)','rgba(20,80,30,.85)','rgba(200,230,150,.85)','rgba(50,140,60,.85)','rgba(130,200,80,.85)'];
-  const type = chartData.type||'bar';
+  
+  const labels = chartData.labels||[];
+  const vals = chartData.vals||chartData.data||[];
+  let type = chartData.type||'bar';
+  const isHorizontal = type === 'horizontalBar';
+  const chartType = isHorizontal ? 'bar' : type;
+  const isPie = type==='pie'||type==='doughnut';
+  
+  const colors = getVivaColors(labels.length);
+  const colorsOpaque = getVivaColors(labels.length,'1');
+
+  // Ordenar datos de mayor a menor para barras
+  let sortedLabels = [...labels];
+  let sortedVals = [...vals];
+  if ((type==='bar'||isHorizontal) && vals.length > 1) {
+    const pairs = labels.map((l,i)=>({l, v:vals[i]})).sort((a,b)=>b.v-a.v);
+    sortedLabels = pairs.map(p=>p.l);
+    sortedVals = pairs.map(p=>p.v);
+  }
+
   chartInstances[id] = new Chart(canvas, {
-    type,
+    type: chartType,
     data: {
-      labels: chartData.labels||[],
+      labels: sortedLabels,
       datasets:[{
         label: chartData.title||'',
-        data: chartData.vals||chartData.data||[],
-        backgroundColor: type==='line' ? 'rgba(107,191,62,.3)' : (chartData.labels||[]).map((_,i)=>vivaColors[i%vivaColors.length]),
-        borderColor: type==='line' ? 'rgba(107,191,62,1)' : (chartData.labels||[]).map((_,i)=>vivaColors[i%vivaColors.length].replace('.85','1')),
+        data: sortedVals,
+        backgroundColor: isPie ? colors : (type==='line'?'rgba(107,191,62,.15)':colors),
+        borderColor: isPie ? colorsOpaque : (type==='line'?'rgba(107,191,62,1)':colorsOpaque),
         borderWidth: type==='line'?2.5:1.5,
-        borderRadius: type==='bar'?6:0,
+        borderRadius: (type==='bar'||isHorizontal)?6:0,
         fill: type==='line',
         tension: 0.4,
         pointRadius: type==='line'?5:0,
-        pointBackgroundColor:'#1E6B2E'
+        pointBackgroundColor:'#1E6B2E',
+        pointHoverRadius: type==='line'?7:0,
       }]
     },
     options:{
-      responsive:true, maintainAspectRatio:true,
-      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>' '+ctx.parsed.y?.toLocaleString('es-MX')}}},
-      scales:(type==='pie'||type==='doughnut')?{}:{
-        x:{ticks:{font:{family:'Outfit',size:10},color:'#4a6a3a'},grid:{display:false}},
-        y:{ticks:{font:{family:'Outfit',size:10},color:'#4a6a3a',callback:v=>typeof v==='number'?v.toLocaleString('es-MX'):v},grid:{color:'rgba(107,191,62,.08)'}}
+      indexAxis: isHorizontal ? 'y' : 'x',
+      responsive:true,
+      maintainAspectRatio:true,
+      plugins:{
+        legend:{display:isPie, position:'right', labels:{font:{family:'Outfit',size:11},color:'#2d4a20',padding:12}},
+        tooltip:{
+          callbacks:{
+            label: ctx => {
+              const v = ctx.parsed?.y ?? ctx.parsed?.x ?? ctx.parsed;
+              return ` ${ctx.dataset.label||''}: ${typeof v==='number'?v.toLocaleString('es-MX','currency'==='MXN'?{style:'currency',currency:'MXN'}:{}):v}`;
+            }
+          }
+        }
+      },
+      scales: isPie ? {} : {
+        x:{
+          ticks:{font:{family:'Outfit',size:10},color:'#4a6a3a',maxRotation:isHorizontal?0:45,callback:v=>isHorizontal&&typeof v==='number'?'$'+v.toLocaleString('es-MX'):v},
+          grid:{display:isHorizontal,color:'rgba(107,191,62,.08)'}
+        },
+        y:{
+          ticks:{font:{family:'Outfit',size:10},color:'#4a6a3a',callback:v=>!isHorizontal&&typeof v==='number'?'$'+v.toLocaleString('es-MX'):v},
+          grid:{display:!isHorizontal,color:'rgba(107,191,62,.08)'}
+        }
       }
     }
   });
@@ -775,6 +855,26 @@ async function sendMessage() {
     const rTime = new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
     const msgObj = {role:'assistant',content:data.reply||'Sin respuesta.',time:rTime};
     if (data.excelData) { msgObj.excelData=data.excelData; lastExcelData=data.excelData; }
+
+    // Detectar si es una solicitud de ficha técnica y buscar el PDF
+    const isFicha = /ficha.t[eé]cnica|ficha de|especificaciones de|ft\s+\w|dame la ficha|muestra la ficha/i.test(text);
+    if (isFicha) {
+      // Extraer nombre de tela del mensaje
+      const telaMatch = text.match(/(?:ficha|tela|de la tela|del artículo|del articulo|de)\s+([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑA-Za-z0-9\s]+?)(?:\s*$|\s*[?,.])/i);
+      const telaQuery = telaMatch?.[1]?.trim() || text.replace(/ficha|técnica|tecnica|de la|del|dame|muestra|especificaciones/gi,'').trim();
+      if (telaQuery && telaQuery.length > 1) {
+        try {
+          const pdfRes = await fetch('/api/pdf/search/' + encodeURIComponent(telaQuery));
+          const pdfData = await pdfRes.json();
+          if (pdfData.found) {
+            msgObj.pdfId = pdfData.id;
+            msgObj.pdfName = pdfData.displayName;
+            msgObj.content = `✅ Encontré la ficha técnica de **${pdfData.displayName}**. Puedes verla o descargarla abajo.`;
+          }
+        } catch(e) { console.warn('Error buscando PDF:', e); }
+      }
+    }
+
     conv.messages.push(msgObj);
     conv.updatedAt = new Date().toISOString();
     renderMessages();
@@ -971,6 +1071,44 @@ async function toggleUser(username,active) {
 }
 
 // ─── TOAST ────────────────────────────────────────────────────────
+// ─── PDF VIEWER ──────────────────────────────────────────────────
+function viewPDF(id, name) {
+  const existing = document.getElementById('pdfModal');
+  if (existing) existing.remove();
+  const modal = document.createElement('div');
+  modal.id = 'pdfModal';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.7);display:flex;flex-direction:column;';
+  modal.innerHTML = `
+    <div style="background:#1a1f16;padding:12px 20px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+      <div style="color:#fff;font-weight:700;font-size:15px;font-family:Outfit,sans-serif">📄 ${escHtml(name)} — Ficha Técnica Vivatex</div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <button onclick="downloadPDF(${id},'${escHtml(name)}')" style="background:#6BBF3E;color:#fff;border:none;padding:7px 16px;border-radius:7px;cursor:pointer;font-size:13px;font-weight:600;font-family:Outfit,sans-serif">📥 Descargar</button>
+        <button onclick="document.getElementById('pdfModal').remove()" style="background:rgba(255,255,255,.15);color:#fff;border:none;width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:18px;line-height:1">✕</button>
+      </div>
+    </div>
+    <iframe src="/api/pdf/${id}" style="flex:1;border:none;width:100%;background:#fff" title="${escHtml(name)}"></iframe>
+  `;
+  document.body.appendChild(modal);
+  const closeOnEsc = (e) => { if(e.key==='Escape'){modal.remove();document.removeEventListener('keydown',closeOnEsc);} };
+  document.addEventListener('keydown', closeOnEsc);
+}
+
+async function downloadPDF(id, name) {
+  try {
+    showToast('⏳ Descargando PDF...', 'success');
+    const res = await fetch(`/api/pdf/${id}`);
+    if (!res.ok) throw new Error('PDF no encontrado');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `FT_${String(name).replace(/\s+/g,'_')}_Vivatex.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('✅ PDF descargado', 'success');
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
 function showToast(msg,type='success') {
   const t=document.getElementById('toast');
   t.textContent=msg; t.className=`toast ${type} show`;
