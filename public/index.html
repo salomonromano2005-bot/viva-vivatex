@@ -883,19 +883,27 @@ async function sendMessage() {
         const rTime = new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
 
         if (pdfData.found) {
-          conv.messages.push({
-            role:'assistant',
-            content:`✅ Aquí está la ficha técnica de **${pdfData.displayName}**`,
-            pdfId: pdfData.id,
-            pdfName: pdfData.displayName,
-            time: rTime
-          });
+          if (pdfData.source === 'pdf' && pdfData.id) {
+            // PDF original disponible
+            conv.messages.push({
+              role:'assistant',
+              content:`✅ Aquí está la ficha técnica de **${pdfData.displayName}**`,
+              pdfId: pdfData.id,
+              pdfName: pdfData.displayName,
+              time: rTime
+            });
+          } else {
+            // PDF encontrado pero sin archivo original — pedir que lo resuban
+            conv.messages.push({
+              role:'assistant',
+              content:`Encontré que sí tenemos la ficha técnica de **${pdfData.displayName}**, pero el archivo PDF original necesita volver a subirse.\n\n**Para verlo:**\n1. Ve al Panel de Sistemas → Archivos QAD\n2. Sube el PDF de la ficha técnica de **${pdfData.displayName}**\n3. Después aparecerá el botón para verlo y descargarlo\n\n¿Quieres que te dé los datos técnicos de esta tela en texto mientras tanto?`,
+              time: rTime
+            });
+          }
         } else {
           conv.messages.push({
             role:'assistant',
-            content:`No encontré la ficha técnica de **"${telaQuery}"**. Verifica que el nombre sea correcto o que el PDF haya sido subido en el Panel de Sistemas.
-
-Puedes preguntar: _¿Qué fichas técnicas tienes disponibles?_ para ver la lista completa.`,
+            content:`No encontré la ficha técnica de **"${telaQuery}"**. Verifica el nombre o sube el PDF desde Panel de Sistemas → Archivos QAD.\n\nEscribe _¿Qué fichas técnicas tienes?_ para ver la lista completa.`,
             time: rTime
           });
         }
