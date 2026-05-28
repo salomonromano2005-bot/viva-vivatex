@@ -90,7 +90,15 @@ async function initDB() {
     password VARCHAR(255) NOT NULL, role VARCHAR(50) DEFAULT 'user',
     active BOOLEAN DEFAULT true, created_at TIMESTAMP DEFAULT NOW()
   )`);
-  await pool.query(`CREATE TABLE IF NOT EXISTS user_memory (
+  await pool.query(`CREATE TABLE IF NOT EXISTS qad_pdfs (
+    id SERIAL PRIMARY KEY,
+    filename VARCHAR(500) UNIQUE NOT NULL,
+    display_name VARCHAR(500),
+    pdf_base64 TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW()
+  )`);
+
+    await pool.query(`CREATE TABLE IF NOT EXISTS user_memory (
     id SERIAL PRIMARY KEY, username VARCHAR(100) UNIQUE NOT NULL,
     memory TEXT DEFAULT '', updated_at TIMESTAMP DEFAULT NOW()
   )`);
@@ -415,44 +423,125 @@ app.post('/api/qad/upload', upload.array('files', 20), async (req, res) => {
       try {
         const p = await pdfParse(file.buffer);
         const rawText = String(p.text || '').trim();
-        if (!rawText) continue;
 
+        // Guardar PDF original en base64 para descarga directa
+        const pdfBase64 = file.buffer.toString('base64');
+        const displayName = path.basename(file.originalname, '.pdf')
+          .replace(/^FT[_\s-]*/i, '')
+          .replace(/[_-]/g, ' ')
+          .trim()
+          .toUpperCase();
+
+        if (pool) {
+          await pool.query(
+            `INSERT INTO qad_pdfs (filename, display_name, pdf_base64, created_at)
+             VALUES ($1, $2, $3, NOW())
+             ON CONFLICT (filename) DO UPDATE SET display_name=$2, pdf_base64=$3, created_at=NOW()`,
+            [file.originalname, displayName, pdfBase64]
+          );
+        }
+
+        // También guardar texto para búsquedas
         const lines = rawText.split('\n').map(l => l.trim()).filter(l => l.length > 2);
         let data = [];
 
-        const tabularLines = lines.filter(l => /\s{2,}/.test(l));
-        const isTabular = tabularLines.length > lines.length * 0.3 && lines.length > 3;
+        if (lines.length > 0) {
+          const tabularLines = lines.filter(l => /\s{2,}/.test(l));
+          const isTabular = tabularLines.length > lines.length * 0.3 && lines.length > 3;
 
-        if (isTabular) {
-          let headerIdx = 0;
-          for (let i = 0; i < Math.min(10, lines.length); i++) {
-            if (/\s{2,}/.test(lines[i])) { headerIdx = i; break; }
-          }
-          const headers = lines[headerIdx].split(/\s{2,}/).map(h => h.trim()).filter(Boolean);
-          if (headers.length >= 2) {
-            for (let i = headerIdx + 1; i < lines.length; i++) {
-              const parts = lines[i].split(/\s{2,}/).map(p2 => p2.trim());
-              if (parts.length >= 2) {
-                const row = {};
-                headers.forEach((h, idx) => { row[h] = parts[idx] || ''; });
-                data.push(row);
+          if (isTabular) {
+            let headerIdx = 0;
+            for (let i = 0; i < Math.min(10, lines.length); i++) {
+              if (/\s{2,}/.test(lines[i])) { headerIdx = i; break; }
+            }
+            const headers = lines[headerIdx].split(/\s{2,}/).map(h => h.trim()).filter(Boolean);
+            if (headers.length >= 2) {
+              for (let i = headerIdx + 1; i < lines.length; i++) {
+                const parts = lines[i].split(/\s{2,}/).map(p2 => p2.trim());
+                if (parts.length >= 2) {
+                  const row = {};
+                  headers.forEach((h, idx) => { row[h] = parts[idx] || ''; });
+                  data.push(row);
+                }
               }
             }
           }
+
+          if (!data.length) {
+            data = lines.map((l, i) => ({ linea: i + 1, contenido: l, archivo: file.originalname }));
+          }
         }
 
-        if (!data.length) {
-          data = lines.map((l, i) => ({ linea: i + 1, contenido: l, archivo: file.originalname }));
+        if (data.length) {
+          const key = `${file.originalname}_PDF`.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 200);
+          await saveQAD(key, file.originalname, 'PDF', data);
         }
 
-        const key = `${file.originalname}_PDF`.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 200);
-        await saveQAD(key, file.originalname, 'PDF', data);
-        console.log(`✅ PDF: ${file.originalname} — ${data.length} registros`);
+        console.log(`✅ PDF: ${file.originalname} — guardado (${Math.round(pdfBase64.length/1024)}KB)`);
         sheets++; files++;
       } catch(e) { console.error('Error PDF:', file.originalname, e.message); }
     }
   }
   res.json({ ok: true, files, sheets });
+});
+
+// ─── ENDPOINT PDF ────────────────────────────────────────────────
+// Buscar PDF por nombre de tela
+app.get('/api/pdf/search/:query', async (req, res) => {
+  if (!pool) return res.status(404).json({ found: false });
+  try {
+    const query = req.params.query.trim();
+    const normQuery = query.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, ' ').trim();
+    
+    // Buscar por nombre display o filename
+    const r = await pool.query(
+      `SELECT id, filename, display_name FROM qad_pdfs 
+       WHERE lower(display_name) LIKE $1 OR lower(filename) LIKE $1
+       ORDER BY length(display_name) ASC LIMIT 5`,
+      [`%${normQuery}%`]
+    );
+
+    if (!r.rows.length) return res.json({ found: false, query });
+
+    // Tomar el más corto (más específico)
+    const best = r.rows[0];
+    res.json({ found: true, id: best.id, filename: best.filename, displayName: best.display_name });
+  } catch(e) {
+    console.error('Error buscando PDF:', e.message);
+    res.status(500).json({ found: false });
+  }
+});
+
+// Servir PDF por ID
+app.get('/api/pdf/:id', async (req, res) => {
+  if (!pool) return res.status(404).send('Sin base de datos');
+  try {
+    const r = await pool.query('SELECT filename, display_name, pdf_base64 FROM qad_pdfs WHERE id=$1', [req.params.id]);
+    if (!r.rows.length) return res.status(404).send('PDF no encontrado');
+    
+    const { filename, pdf_base64 } = r.rows[0];
+    const buf = Buffer.from(pdf_base64, 'base64');
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="${filename}"`,
+      'Content-Length': buf.length
+    });
+    res.send(buf);
+  } catch(e) {
+    console.error('Error sirviendo PDF:', e.message);
+    res.status(500).send('Error');
+  }
+});
+
+// Listar todos los PDFs disponibles
+app.get('/api/pdfs/list', async (req, res) => {
+  if (!pool) return res.json({ pdfs: [] });
+  try {
+    const r = await pool.query('SELECT id, filename, display_name, created_at FROM qad_pdfs ORDER BY display_name ASC');
+    res.json({ pdfs: r.rows });
+  } catch(e) {
+    res.json({ pdfs: [] });
+  }
 });
 
 app.get('/api/qad/status', async (req, res) => {
